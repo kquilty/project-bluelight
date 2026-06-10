@@ -43,4 +43,6 @@ dependencies {
     // For the permission screen (MainActivity) and the coroutine that refreshes the widget.
     implementation("androidx.activity:activity-ktx:1.9.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
+    // The settings screen's event list.
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
 }
