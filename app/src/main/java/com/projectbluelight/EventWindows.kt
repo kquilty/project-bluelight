@@ -93,6 +93,19 @@ object EventWindows {
         Voice.Kind.GENERIC -> 1
     }
 
+    // ---------- One-time hints ----------
+
+    private const val KEY_SCRUB_HINT = "setting:scrub_hint_seen"
+
+    // The scrub gesture is invisible until someone tells you. The tip line
+    // shows until the first successful scrub, then never again.
+    fun isScrubHintSeen(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_SCRUB_HINT, false)
+
+    fun setScrubHintSeen(context: Context) {
+        prefs(context).edit().putBoolean(KEY_SCRUB_HINT, true).apply()
+    }
+
     // ---------- Widget text size ----------
 
     private const val KEY_FONT = "setting:widget_font"

@@ -14,6 +14,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -23,6 +24,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -80,6 +82,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
@@ -107,6 +111,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.format.DateTimeFormatter
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
 
@@ -302,6 +308,16 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
     fun eff(e: UpcomingEvent): Int =
         windows[e.eventId] ?: EventWindows.resolveDefault(defaultDays, e.title)
 
+    var hintSeen by remember { mutableStateOf(EventWindows.isScrubHintSeen(context)) }
+    val scrubCommit: (UpcomingEvent, Int) -> Unit = { e, days ->
+        windows[e.eventId] = days
+        saveWindows(e.allIds, days)
+        if (!hintSeen) {
+            EventWindows.setScrubHintSeen(context)
+            hintSeen = true
+        }
+    }
+
     val inView = loaded.filter { EventWindows.isVisible(eff(it), it.daysUntil) }
     val waiting = loaded.filter { eff(it) != 0 && !EventWindows.isVisible(eff(it), it.daysUntil) }
     val resting = loaded.filter { eff(it) == 0 }
@@ -350,6 +366,14 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
                     style = MaterialTheme.typography.bodySmall,
                     color = InkFaint,
                 )
+                if (!hintSeen) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Tip: slide any event sideways to set its window.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Accent.copy(alpha = 0.7f),
+                    )
+                }
             }
         }
 
@@ -403,13 +427,13 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
             }
         }
         items(inView, key = { it.eventId }) { event ->
-            EventCard(event, eff(event), Section.InView, Modifier.animateItem()) { selected = event }
+            EventCard(event, eff(event), Section.InView, Modifier.animateItem(), { scrubCommit(event, it) }) { selected = event }
         }
 
         if (waiting.isNotEmpty()) {
             item(key = "hdr-wait") { SectionHeader("Waiting their turn", waiting.size) }
             items(waiting, key = { it.eventId }) { event ->
-                EventCard(event, eff(event), Section.Waiting, Modifier.animateItem()) { selected = event }
+                EventCard(event, eff(event), Section.Waiting, Modifier.animateItem(), { scrubCommit(event, it) }) { selected = event }
             }
         }
 
@@ -430,7 +454,7 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
                 }
             }
             items(resting, key = { it.eventId }) { event ->
-                EventCard(event, 0, Section.Resting, Modifier.animateItem()) { selected = event }
+                EventCard(event, 0, Section.Resting, Modifier.animateItem(), { scrubCommit(event, it) }) { selected = event }
             }
         }
     }
@@ -599,50 +623,131 @@ private fun SectionHeader(title: String, count: Int) {
 
 private enum class Section { InView, Waiting, Resting }
 
+// The scrub gesture's stops are LEAD_TIMES left to right — left means less.
+// A custom value (a 21-day window) starts from its nearest preset.
+private fun nearestStopIndex(window: Int): Int {
+    LEAD_TIMES.indexOfFirst { it.days == window }.let { if (it >= 0) return it }
+    return LEAD_TIMES.withIndex()
+        .filter { it.value.days > 0 }
+        .minByOrNull { abs(it.value.days - window) }!!
+        .index
+}
+
+// What a scrubbed-to window means for THIS event, while the finger is down.
+private fun scrubPreview(event: UpcomingEvent, days: Int): String = when {
+    days == 0 -> "stays hidden"
+    EventWindows.isVisible(days, event.daysUntil) -> "on your widget now"
+    days == EventWindows.DAY_OF -> "surfaces ${event.date.format(shortDate)} — day of"
+    else -> "surfaces ${event.date.minusDays(days.toLong()).format(shortDate)}"
+}
+
 @Composable
 private fun EventCard(
     event: UpcomingEvent,
     window: Int,
     section: Section,
     modifier: Modifier = Modifier,
+    onScrub: (Int) -> Unit,
     onClick: () -> Unit,
 ) {
+    val haptics = LocalHapticFeedback.current
+    var widthPx by remember { mutableStateOf(1f) }
+    var scrubIndex by remember(event.eventId) { mutableStateOf<Int?>(null) }
+    var startIndex by remember { mutableIntStateOf(0) }
+    var dragAccum by remember { mutableStateOf(0f) }
+    val scrubbing = scrubIndex != null
+
     Surface(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 5.dp),
+            .padding(vertical = 5.dp)
+            .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
+            // Drag sideways to scrub the window across the preset stops; the
+            // vertical list keeps ambiguous gestures, commit happens on lift.
+            .pointerInput(event.eventId, window) {
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        dragAccum = 0f
+                        startIndex = nearestStopIndex(window)
+                        scrubIndex = startIndex
+                    },
+                    onDragEnd = {
+                        scrubIndex?.let { i ->
+                            if (LEAD_TIMES[i].days != window) onScrub(LEAD_TIMES[i].days)
+                        }
+                        scrubIndex = null
+                    },
+                    onDragCancel = { scrubIndex = null },
+                ) { change, amount ->
+                    change.consume()
+                    dragAccum += amount
+                    val stopWidth = widthPx / LEAD_TIMES.size
+                    val next = (startIndex + dragAccum / stopWidth).roundToInt()
+                        .coerceIn(0, LEAD_TIMES.lastIndex)
+                    if (next != scrubIndex) {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        scrubIndex = next
+                    }
+                }
+            },
         shape = RoundedCornerShape(20.dp),
-        color = if (section == Section.InView) Surface2 else Surface1.copy(alpha = 0.65f),
-        border = if (section == Section.InView) BorderStroke(1.dp, Accent.copy(alpha = 0.25f)) else null,
+        color = if (scrubbing) Surface2 else if (section == Section.InView) Surface2 else Surface1.copy(alpha = 0.65f),
+        border = when {
+            scrubbing -> BorderStroke(1.dp, Accent.copy(alpha = 0.6f))
+            section == Section.InView -> BorderStroke(1.dp, Accent.copy(alpha = 0.25f))
+            else -> null
+        },
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Box {
+            if (scrubbing) {
+                val frac by animateFloatAsState(
+                    targetValue = (scrubIndex!! + 1f) / LEAD_TIMES.size,
+                    label = "scrubTrack",
+                )
+                Box(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth(frac)
+                        .height(3.dp)
+                        .background(Accent.copy(alpha = 0.55f)),
+                )
+            }
+            Row(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
             Column(Modifier.weight(1f)) {
                 Text(
                     text = event.title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = if (section == Section.Resting) InkDim else Ink,
+                    color = if (section == Section.Resting && !scrubbing) InkDim else Ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = cardDateLine(event),
+                    text = scrubIndex?.let { scrubPreview(event, LEAD_TIMES[it].days) }
+                        ?: cardDateLine(event),
                     style = MaterialTheme.typography.bodySmall,
-                    color = InkFaint,
+                    color = if (scrubbing) AccentGlow else InkFaint,
                 )
             }
             Spacer(Modifier.width(12.dp))
-            when (section) {
-                Section.InView -> Text(
+            val scrubbedTo = scrubIndex
+            when {
+                scrubbedTo != null -> Text(
+                    text = LEAD_TIMES[scrubbedTo].label,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Accent,
+                    maxLines = 1,
+                )
+                section == Section.InView -> Text(
                     text = countdown(event.daysUntil),
                     style = MaterialTheme.typography.headlineSmall,
                     color = if (event.daysUntil == 0L) AccentGlow else Accent,
                 )
-                Section.Waiting -> Column(horizontalAlignment = Alignment.End) {
+                section == Section.Waiting -> Column(horizontalAlignment = Alignment.End) {
                     val dayOf = window == EventWindows.DAY_OF
                     Text(
                         text = "surfaces in ${if (dayOf) event.daysUntil else event.daysUntil - window}d",
@@ -655,7 +760,7 @@ private fun EventCard(
                         color = InkFaint,
                     )
                 }
-                Section.Resting -> Surface(
+                else -> Surface(
                     shape = CircleShape,
                     color = Surface2,
                     modifier = Modifier.size(34.dp),
@@ -664,6 +769,7 @@ private fun EventCard(
                         Icon(Icons.Rounded.Add, contentDescription = "Give it a window", tint = InkDim, modifier = Modifier.size(18.dp))
                     }
                 }
+            }
             }
         }
     }
