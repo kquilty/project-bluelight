@@ -22,6 +22,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -46,6 +48,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -107,8 +111,8 @@ class MainActivity : ComponentActivity() {
         WidgetRefreshWorker.scheduleDailyAtRollover(this)
         setContent {
             BluelightTheme {
-                BluelightApp(saveWindow = { eventId, days ->
-                    EventWindows.setDays(this, eventId, days)
+                BluelightApp(saveWindows = { eventIds, days ->
+                    eventIds.forEach { id -> EventWindows.setDays(this, id, days) }
                     lifecycleScope.launch { BluelightWidget.refreshAll(applicationContext) }
                 })
             }
@@ -119,7 +123,7 @@ class MainActivity : ComponentActivity() {
 // ---------- App shell: permission gate + resume-aware reload ----------
 
 @Composable
-private fun BluelightApp(saveWindow: (Long, Int) -> Unit) {
+private fun BluelightApp(saveWindows: (List<Long>, Int) -> Unit) {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(CalendarSource.hasPermission(context)) }
     var deniedOnce by remember { mutableStateOf(false) }
@@ -167,7 +171,7 @@ private fun BluelightApp(saveWindow: (Long, Int) -> Unit) {
             )
         }
         if (granted) {
-            EventsScreen(resumeTick = resumeTick, saveWindow = saveWindow)
+            EventsScreen(resumeTick = resumeTick, saveWindows = saveWindows)
         } else {
             OnboardingScreen(
                 deniedOnce = deniedOnce,
@@ -252,11 +256,12 @@ private fun GlowOrb(modifier: Modifier = Modifier) {
 // ---------- The main screen: three sections of attention ----------
 
 @Composable
-private fun EventsScreen(resumeTick: Int, saveWindow: (Long, Int) -> Unit) {
+private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit) {
     val context = LocalContext.current
     var events by remember { mutableStateOf<List<UpcomingEvent>?>(null) }
     val windows = remember { mutableStateMapOf<Long, Int>() }
     var selected by remember { mutableStateOf<UpcomingEvent?>(null) }
+    var bulkOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(resumeTick) {
         val loaded = withContext(Dispatchers.IO) { CalendarSource.upcomingEvents(context) }
@@ -337,6 +342,20 @@ private fun EventsScreen(resumeTick: Int, saveWindow: (Long, Int) -> Unit) {
 
         if (resting.isNotEmpty()) {
             item(key = "hdr-rest") { SectionHeader("Everything else", resting.size) }
+            if (resting.size > 1) {
+                item(key = "bulk-all") {
+                    TextButton(
+                        onClick = { bulkOpen = true },
+                        contentPadding = PaddingValues(vertical = 4.dp),
+                    ) {
+                        Text(
+                            "Give all ${resting.size} a window at once →",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Accent,
+                        )
+                    }
+                }
+            }
             items(resting, key = { it.eventId }) { event ->
                 EventCard(event, 0, Section.Resting, Modifier.animateItem()) { selected = event }
             }
@@ -349,9 +368,20 @@ private fun EventsScreen(resumeTick: Int, saveWindow: (Long, Int) -> Unit) {
             currentDays = windows[event.eventId] ?: 0,
             onSelect = { days ->
                 windows[event.eventId] = days
-                saveWindow(event.eventId, days)
+                saveWindows(listOf(event.eventId), days)
             },
             onDismiss = { selected = null },
+        )
+    }
+
+    if (bulkOpen) {
+        BulkPromoteSheet(
+            events = resting,
+            onApply = { ids, days ->
+                ids.forEach { windows[it] = days }
+                saveWindows(ids, days)
+            },
+            onDismiss = { bulkOpen = false },
         )
     }
 }
@@ -526,6 +556,122 @@ private fun LeadTimeSheet(
     }
 }
 
+// ---------- Bulk promotion: sweep "Everything else" in with one window ----------
+
+@Composable
+private fun BulkPromoteSheet(
+    events: List<UpcomingEvent>,
+    onApply: (List<Long>, Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val haptics = LocalHapticFeedback.current
+    var days by remember { mutableIntStateOf(1) }
+    // Everything starts included; a tap on a row excludes the noise.
+    val excluded = remember { mutableStateMapOf<Long, Boolean>() }
+    val chosen = events.filter { excluded[it.eventId] != true }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Surface1,
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp),
+        ) {
+            Text("Everything else, sorted", style = MaterialTheme.typography.headlineSmall, color = Ink)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "One window for everything still hidden. Untick what doesn't deserve the headspace.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = InkDim,
+            )
+            Spacer(Modifier.height(24.dp))
+            Text("START MATTERING", style = MaterialTheme.typography.labelSmall, color = InkFaint)
+            Spacer(Modifier.height(12.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LEAD_TIMES.filter { it.days > 0 }.forEach { lead ->
+                    FilterChip(
+                        selected = lead.days == days,
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            days = lead.days
+                        },
+                        label = { Text(lead.label) },
+                        shape = RoundedCornerShape(12.dp),
+                        border = null,
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = Surface2,
+                            labelColor = InkDim,
+                            selectedContainerColor = Accent,
+                            selectedLabelColor = OnAccent,
+                        ),
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+                items(events, key = { it.eventId }) { event ->
+                    val included = excluded[event.eventId] != true
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { excluded[event.eventId] = included }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = event.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = if (included) Ink else InkFaint,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = cardDateLine(event),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = InkFaint,
+                            )
+                        }
+                        Checkbox(
+                            checked = included,
+                            onCheckedChange = { excluded[event.eventId] = included },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = Accent,
+                                checkmarkColor = OnAccent,
+                                uncheckedColor = InkFaint,
+                            ),
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onApply(chosen.map { it.eventId }, days)
+                    onDismiss()
+                },
+                enabled = chosen.isNotEmpty(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = OnAccent),
+            ) {
+                val label = LEAD_TIMES.first { it.days == days }.label
+                Text(
+                    text = if (chosen.isEmpty()) "Nothing ticked"
+                    else "Promote ${chosen.size} · $label ahead",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+        }
+    }
+}
+
 // ---------- Wording ----------
 
 private val cardDate = DateTimeFormatter.ofPattern("EEE, MMM d")
@@ -534,7 +680,7 @@ private val shortDate = DateTimeFormatter.ofPattern("MMM d")
 
 private fun countdown(days: Long): String = when (days) {
     0L -> "Today"
-    1L -> "1 day"
+    1L -> "Tomorrow"
     else -> "$days days"
 }
 
