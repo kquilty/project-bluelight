@@ -79,7 +79,6 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -110,7 +109,7 @@ class MainActivity : ComponentActivity() {
             BluelightTheme {
                 BluelightApp(saveWindow = { eventId, days ->
                     EventWindows.setDays(this, eventId, days)
-                    lifecycleScope.launch { BluelightWidget().updateAll(applicationContext) }
+                    lifecycleScope.launch { BluelightWidget.refreshAll(applicationContext) }
                 })
             }
         }
@@ -129,6 +128,12 @@ private fun BluelightApp(saveWindow: (Long, Int) -> Unit) {
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         granted = ok
         if (!ok) deniedOnce = true
+    }
+
+    // The widget can't watch the calendar or permission grants on its own —
+    // opening the app is the natural moment to bring it back in sync.
+    LaunchedEffect(granted) {
+        if (granted) BluelightWidget.refreshAll(context.applicationContext)
     }
 
     // Re-check permission and re-read the calendar whenever the user comes back.

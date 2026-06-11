@@ -2,19 +2,27 @@ package com.projectbluelight
 
 import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
+import androidx.glance.appwidget.state.updateAppWidgetState
+import androidx.glance.appwidget.updateAll
 import androidx.glance.background
+import androidx.glance.currentState
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
@@ -40,12 +48,35 @@ private val DIM = Color(0xFF93A7C0)
 class BluelightWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        // Read the calendar BEFORE drawing, so the tile has real data to show.
-        val events = withContext(Dispatchers.IO) { visibleEvents(context) }
-        val granted = CalendarSource.hasPermission(context)
-        val voice = Voice.line(events)
+        // Read the calendar BEFORE composing, so the first paint has real data.
+        val initial = withContext(Dispatchers.IO) { visibleEvents(context) }
         provideContent {
-            WidgetContent(events, granted, voice)
+            // updateAll() on a live session only RECOMPOSES — it does not re-run
+            // provideGlance — so data captured above goes stale the moment the
+            // user promotes an event. Re-read inside composition, keyed on the
+            // widget state that refreshAll() bumps.
+            val state = currentState<Preferences>()
+            val events by produceState(initial, state) {
+                value = withContext(Dispatchers.IO) { visibleEvents(context) }
+            }
+            WidgetContent(events, CalendarSource.hasPermission(context), Voice.line(events))
+        }
+    }
+
+    companion object {
+        private val REFRESH = intPreferencesKey("refresh")
+
+        // The one way to refresh every tile. Bumping the counter changes the
+        // composition key even when a session is alive; plain updateAll() alone
+        // would recompose with stale data.
+        suspend fun refreshAll(context: Context) {
+            val widget = BluelightWidget()
+            GlanceAppWidgetManager(context).getGlanceIds(BluelightWidget::class.java).forEach { id ->
+                updateAppWidgetState(context, id) { prefs ->
+                    prefs[REFRESH] = (prefs[REFRESH] ?: 0) + 1
+                }
+            }
+            widget.updateAll(context)
         }
     }
 }
