@@ -70,7 +70,8 @@ private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean) {
                 Small("grant calendar access")
             }
             events.isEmpty() -> {
-                Small("Nothing in view yet")
+                Big("All clear")
+                Small("tap to choose what shows here")
             }
             else -> {
                 LazyColumn(modifier = GlanceModifier.fillMaxSize()) {

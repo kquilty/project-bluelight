@@ -64,7 +64,7 @@ class MainActivity : ComponentActivity() {
             }
             showStatus(
                 if (events.isEmpty()) "Nothing on your calendar for the next year."
-                else "Slide to choose how far ahead each event appears on the widget."
+                else "Everything starts hidden. Slide an event up to give it a spot on the widget, from however far out you need to start thinking about it."
             )
             findViewById<RecyclerView>(R.id.events).adapter =
                 EventAdapter(events) { eventId, days ->

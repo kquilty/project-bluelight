@@ -1,18 +1,20 @@
 # Project Bluelight
 
-A lightweight Android home-screen widget that lays a "visibility window" over your
-existing calendar: each event only starts showing once it's within the number of days
-you chose for it. (Codename — public name TBD.)
+A lightweight Android home-screen widget that lists what you should be thinking
+about: each calendar event surfaces once it's within the lead time you gave it —
+your niece's birthday two weeks out (gifts take shopping time), the dentist one day
+out. (Codename — public name TBD.)
 
 ## How it works
 
 - The **widget** is a scrollable list of every event that has entered its visibility
-  window, soonest first, each with a countdown ("25 days · Christmas"). Events appear
-  as their day approaches and fall off once they pass. It refreshes daily, and
-  whenever you change settings. Tap it to open the app.
+  window, soonest first, each with a countdown ("12 days · Maya's birthday"). Events
+  appear as their lead time begins and fall off once they pass. It refreshes daily,
+  and whenever you change settings. Tap it to open the app.
 - The **app** is the settings screen: it lists every event on your calendar for the
   next year, each with a slider for how far ahead it should appear on the widget
-  (1 day to 365, or hidden entirely). Untouched events default to 30 days out.
+  (1 day to 365). Everything starts hidden — you promote the events that deserve
+  headspace, so recurring noise (standups, gym) never shows up uninvited.
 - Recurring events (birthdays, holidays) count down to their **next** occurrence,
   and one slider covers every occurrence.
 - Windows are stored on-device per event ID. Calendar access is read-only.

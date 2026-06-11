@@ -10,8 +10,10 @@ object EventWindows {
     // The slider stops. 0 means the event never shows on the widget.
     val PRESETS = intArrayOf(0, 1, 2, 3, 5, 7, 14, 21, 30, 60, 90, 180, 365)
 
-    // Events you haven't touched show up a month out.
-    const val DEFAULT_DAYS = 30
+    // Everything starts hidden. The widget is curated headspace — events only
+    // earn a spot when you give them a window, so recurring noise (standups,
+    // gym) never shows up uninvited.
+    const val DEFAULT_DAYS = 0
 
     private fun prefs(context: Context) =
         context.getSharedPreferences("event_windows", Context.MODE_PRIVATE)
