@@ -47,6 +47,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private val ACCENT = Color(0xFF4DA3FF)
+private val GLOW = Color(0xFF9CCBFF) // today's rows — arrival reads warmer
 private val BG = Color(0xFF0E1A2B)
 private val FG = Color(0xFFDCE6F2)
 private val DIM = Color(0xFF93A7C0)
@@ -168,7 +169,11 @@ private fun EventRow(event: UpcomingEvent, scale: Float) {
         // countdown is the deliberate "Today / at 4".
         Text(
             text = countdown,
-            style = TextStyle(color = solid(ACCENT), fontSize = (14 * scale).sp, fontWeight = FontWeight.Bold),
+            style = TextStyle(
+                color = solid(if (event.daysUntil == 0L) GLOW else ACCENT),
+                fontSize = (14 * scale).sp,
+                fontWeight = FontWeight.Bold,
+            ),
             maxLines = 2,
             modifier = GlanceModifier.width((82 * scale).dp),
         )

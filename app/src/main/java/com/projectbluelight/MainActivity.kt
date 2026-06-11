@@ -715,6 +715,18 @@ private fun EventCard(
     var dragAccum by remember { mutableStateOf(0f) }
     val scrubbing = scrubIndex != null
 
+    // The day you promoted it for has arrived — let the card breathe a little.
+    val arriving = section == Section.InView && event.daysUntil == 0L && !scrubbing
+    val pulse by rememberInfiniteTransition(label = "arrival").animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.65f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "arrivalPulse",
+    )
+
     Surface(
         onClick = onClick,
         modifier = modifier
@@ -753,6 +765,7 @@ private fun EventCard(
         color = if (scrubbing) Surface2 else if (section == Section.InView) Surface2 else Surface1.copy(alpha = 0.65f),
         border = when {
             scrubbing -> BorderStroke(1.dp, Accent.copy(alpha = 0.6f))
+            arriving -> BorderStroke(1.dp, AccentGlow.copy(alpha = pulse))
             section == Section.InView -> BorderStroke(1.dp, Accent.copy(alpha = 0.25f))
             else -> null
         },
