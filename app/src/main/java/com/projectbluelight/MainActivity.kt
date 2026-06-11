@@ -46,6 +46,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -55,6 +56,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -108,13 +110,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        WidgetRefreshWorker.scheduleDailyAtRollover(this)
+        WidgetRefreshWorker.scheduleAll(this)
         setContent {
             BluelightTheme {
-                BluelightApp(saveWindows = { eventIds, days ->
-                    eventIds.forEach { id -> EventWindows.setDays(this, id, days) }
-                    lifecycleScope.launch { BluelightWidget.refreshAll(applicationContext) }
-                })
+                BluelightApp(
+                    saveWindows = { eventIds, days ->
+                        eventIds.forEach { id -> EventWindows.setDays(this, id, days) }
+                        lifecycleScope.launch { BluelightWidget.refreshAll(applicationContext) }
+                    },
+                    refreshWidget = {
+                        lifecycleScope.launch { BluelightWidget.refreshAll(applicationContext) }
+                    },
+                )
             }
         }
     }
@@ -123,7 +130,7 @@ class MainActivity : ComponentActivity() {
 // ---------- App shell: permission gate + resume-aware reload ----------
 
 @Composable
-private fun BluelightApp(saveWindows: (List<Long>, Int) -> Unit) {
+private fun BluelightApp(saveWindows: (List<Long>, Int) -> Unit, refreshWidget: () -> Unit) {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(CalendarSource.hasPermission(context)) }
     var deniedOnce by remember { mutableStateOf(false) }
@@ -171,7 +178,7 @@ private fun BluelightApp(saveWindows: (List<Long>, Int) -> Unit) {
             )
         }
         if (granted) {
-            EventsScreen(resumeTick = resumeTick, saveWindows = saveWindows)
+            EventsScreen(resumeTick = resumeTick, saveWindows = saveWindows, refreshWidget = refreshWidget)
         } else {
             OnboardingScreen(
                 deniedOnce = deniedOnce,
@@ -256,14 +263,18 @@ private fun GlowOrb(modifier: Modifier = Modifier) {
 // ---------- The main screen: three sections of attention ----------
 
 @Composable
-private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit) {
+private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit, refreshWidget: () -> Unit) {
     val context = LocalContext.current
     var events by remember { mutableStateOf<List<UpcomingEvent>?>(null) }
     val windows = remember { mutableStateMapOf<Long, Int>() }
     var selected by remember { mutableStateOf<UpcomingEvent?>(null) }
     var bulkOpen by remember { mutableStateOf(false) }
+    var settingsOpen by remember { mutableStateOf(false) }
+    var settingsTick by remember { mutableIntStateOf(0) }
+    var defaultDays by remember { mutableIntStateOf(EventWindows.DEFAULT_DAYS) }
+    var defaultChosen by remember { mutableStateOf(true) }
 
-    LaunchedEffect(resumeTick) {
+    LaunchedEffect(resumeTick, settingsTick) {
         val loaded = withContext(Dispatchers.IO) { CalendarSource.upcomingEvents(context) }
         // Only events the user has actually decided on enter the map — so a
         // missing key means "never asked", and an explicit 0 means "chose Hidden".
@@ -272,6 +283,8 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
                 windows[e.eventId] = EventWindows.daysFor(context, e.eventId)
             }
         }
+        defaultDays = EventWindows.defaultDays(context)
+        defaultChosen = EventWindows.isDefaultChosen(context)
         events = loaded
     }
 
@@ -283,9 +296,13 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
         return
     }
 
-    val inView = loaded.filter { (windows[it.eventId] ?: 0) > 0 && it.daysUntil <= (windows[it.eventId] ?: 0) }
-    val waiting = loaded.filter { (windows[it.eventId] ?: 0) > 0 && it.daysUntil > (windows[it.eventId] ?: 0) }
-    val resting = loaded.filter { (windows[it.eventId] ?: 0) == 0 }
+    // The window an event lives by: explicit choice first, then the default.
+    fun eff(e: UpcomingEvent): Int =
+        windows[e.eventId] ?: EventWindows.resolveDefault(defaultDays, e.title)
+
+    val inView = loaded.filter { eff(it) > 0 && it.daysUntil <= eff(it) }
+    val waiting = loaded.filter { eff(it) > 0 && it.daysUntil > eff(it) }
+    val resting = loaded.filter { eff(it) == 0 }
 
     LazyColumn(
         modifier = Modifier
@@ -295,7 +312,17 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
     ) {
         item(key = "header") {
             Column(Modifier.padding(bottom = 8.dp)) {
-                BrandTitle()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    BrandTitle()
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = { settingsOpen = true }) {
+                        Icon(
+                            Icons.Rounded.Settings,
+                            contentDescription = "Settings",
+                            tint = InkDim,
+                        )
+                    }
+                }
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = Voice.line(inView),
@@ -309,6 +336,32 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
                     style = MaterialTheme.typography.bodySmall,
                     color = InkFaint,
                 )
+            }
+        }
+
+        // One-time nudge: until a default is chosen, new calendar events stay
+        // invisible — the quiet failure mode. Choosing anything dismisses it.
+        if (!defaultChosen) {
+            item(key = "default-nudge") {
+                Surface(
+                    onClick = { settingsOpen = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 5.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    color = Surface2,
+                    border = BorderStroke(1.dp, Accent.copy(alpha = 0.35f)),
+                ) {
+                    Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
+                        Text("New events start hidden", style = MaterialTheme.typography.titleSmall, color = Ink)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "Pick a default window and they'll surface on their own.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = InkDim,
+                        )
+                    }
+                }
             }
         }
 
@@ -336,13 +389,13 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
             }
         }
         items(inView, key = { it.eventId }) { event ->
-            EventCard(event, windows[event.eventId] ?: 0, Section.InView, Modifier.animateItem()) { selected = event }
+            EventCard(event, eff(event), Section.InView, Modifier.animateItem()) { selected = event }
         }
 
         if (waiting.isNotEmpty()) {
             item(key = "hdr-wait") { SectionHeader("Waiting their turn", waiting.size) }
             items(waiting, key = { it.eventId }) { event ->
-                EventCard(event, windows[event.eventId] ?: 0, Section.Waiting, Modifier.animateItem()) { selected = event }
+                EventCard(event, eff(event), Section.Waiting, Modifier.animateItem()) { selected = event }
             }
         }
 
@@ -371,12 +424,29 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
     selected?.let { event ->
         LeadTimeSheet(
             event = event,
-            currentDays = windows[event.eventId] ?: 0,
+            currentDays = eff(event),
             onSelect = { days ->
                 windows[event.eventId] = days
                 saveWindows(listOf(event.eventId), days)
             },
             onDismiss = { selected = null },
+        )
+    }
+
+    if (settingsOpen) {
+        SettingsSheet(
+            currentDefault = defaultDays,
+            onPickDefault = { days ->
+                EventWindows.setDefaultDays(context, days)
+                defaultDays = days
+                defaultChosen = true
+                refreshWidget()
+            },
+            onCalendarsChanged = {
+                settingsTick++
+                refreshWidget()
+            },
+            onDismiss = { settingsOpen = false },
         )
     }
 
@@ -560,6 +630,144 @@ private fun LeadTimeSheet(
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (days > 0) AccentGlow else InkFaint,
                 )
+            }
+        }
+    }
+}
+
+// ---------- Settings: the only two dials the product has ----------
+
+private val DEFAULT_CHOICES = listOf(
+    LeadTime(EventWindows.DEFAULT_DAYS, "Hidden"),
+    LeadTime(EventWindows.SMART, "Smart"),
+    LeadTime(1, "1 day"),
+    LeadTime(3, "3 days"),
+    LeadTime(7, "1 week"),
+    LeadTime(14, "2 weeks"),
+    LeadTime(30, "1 month"),
+)
+
+private fun defaultCaption(days: Int): String = when (days) {
+    EventWindows.DEFAULT_DAYS -> "New events stay hidden until you promote them."
+    EventWindows.SMART -> "By kind: birthdays surface 2 weeks out, trips 3 days, exams a week — everything else the day before."
+    else -> "Every new event surfaces ${DEFAULT_CHOICES.first { it.days == days }.label} ahead. Your per-event choices always win."
+}
+
+@Composable
+private fun SettingsSheet(
+    currentDefault: Int,
+    onPickDefault: (Int) -> Unit,
+    onCalendarsChanged: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
+    var calendars by remember { mutableStateOf<List<CalendarInfo>>(emptyList()) }
+    var muted by remember { mutableStateOf(setOf<Long>()) }
+    LaunchedEffect(Unit) {
+        calendars = withContext(Dispatchers.IO) { CalendarSource.calendars(context) }
+        muted = EventWindows.mutedCalendars(context)
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Surface1,
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp),
+        ) {
+            Text("How Bluelight behaves", style = MaterialTheme.typography.headlineSmall, color = Ink)
+            Spacer(Modifier.height(24.dp))
+
+            Text("NEW EVENTS START", style = MaterialTheme.typography.labelSmall, color = InkFaint)
+            Spacer(Modifier.height(12.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DEFAULT_CHOICES.forEach { lead ->
+                    FilterChip(
+                        selected = lead.days == currentDefault,
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onPickDefault(lead.days)
+                        },
+                        label = { Text(lead.label) },
+                        shape = RoundedCornerShape(12.dp),
+                        border = null,
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = Surface2,
+                            labelColor = InkDim,
+                            selectedContainerColor = Accent,
+                            selectedLabelColor = OnAccent,
+                        ),
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            AnimatedContent(targetState = currentDefault, label = "defaultCaption") { days ->
+                Text(
+                    text = defaultCaption(days),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (days == EventWindows.DEFAULT_DAYS) InkFaint else AccentGlow,
+                )
+            }
+
+            if (calendars.isNotEmpty()) {
+                Spacer(Modifier.height(28.dp))
+                Text("CALENDARS", style = MaterialTheme.typography.labelSmall, color = InkFaint)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Untick a calendar to keep it off Bluelight entirely.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = InkFaint,
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(modifier = Modifier.heightIn(max = 260.dp)) {
+                    items(calendars, key = { it.id }) { cal ->
+                        val watched = cal.id !in muted
+                        fun toggle() {
+                            EventWindows.setCalendarMuted(context, cal.id, watched)
+                            muted = EventWindows.mutedCalendars(context)
+                            onCalendarsChanged()
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { toggle() }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = cal.name,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = if (watched) Ink else InkFaint,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (cal.account.isNotBlank() && cal.account != cal.name) {
+                                    Text(
+                                        text = cal.account,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = InkFaint,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                            Checkbox(
+                                checked = watched,
+                                onCheckedChange = { toggle() },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = Accent,
+                                    checkmarkColor = OnAccent,
+                                    uncheckedColor = InkFaint,
+                                ),
+                            )
+                        }
+                    }
+                }
             }
         }
     }

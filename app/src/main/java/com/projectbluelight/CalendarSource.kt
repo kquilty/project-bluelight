@@ -14,6 +14,12 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 
+data class CalendarInfo(
+    val id: Long,
+    val name: String,
+    val account: String,
+)
+
 data class UpcomingEvent(
     val eventId: Long,
     val title: String,
@@ -43,15 +49,20 @@ object CalendarSource {
             PackageManager.PERMISSION_GRANTED
 
     // The next year of events, soonest first, one entry per event — a weekly
-    // meeting shows up once, on its next occurrence, not 52 times.
+    // meeting shows up once, on its next occurrence, not 52 times. Finished
+    // events drop out: once today's 4pm ends, it stops being "Today at 4".
     fun upcomingEvents(context: Context): List<UpcomingEvent> {
         if (!hasPermission(context)) return emptyList()
 
         val now = System.currentTimeMillis()
+        // Start the window a day back: all-day events are stored at UTC
+        // midnight, so a [now, …] window would drop "today" for some timezones
+        // before the day is over. The filters below handle anything stale.
+        val windowStart = now - 24L * 60 * 60 * 1000
         val oneYearOut = now + 365L * 24 * 60 * 60 * 1000
 
         val builder = CalendarContract.Instances.CONTENT_URI.buildUpon()
-        ContentUris.appendId(builder, now)
+        ContentUris.appendId(builder, windowStart)
         ContentUris.appendId(builder, oneYearOut)
 
         val projection = arrayOf(
@@ -59,8 +70,11 @@ object CalendarSource {
             CalendarContract.Instances.BEGIN,
             CalendarContract.Instances.EVENT_ID,
             CalendarContract.Instances.ALL_DAY,
+            CalendarContract.Instances.END,
+            CalendarContract.Instances.CALENDAR_ID,
         )
 
+        val muted = EventWindows.mutedCalendars(context)
         val events = ArrayList<UpcomingEvent>()
         val seen = HashSet<Long>()
         context.contentResolver.query(
@@ -76,7 +90,14 @@ object CalendarSource {
                 val begin = cursor.getLong(1)
                 val eventId = cursor.getLong(2)
                 val allDay = cursor.getInt(3) == 1
-                if (!seen.add(eventId)) continue
+                val end = cursor.getLong(4)
+                val calendarId = cursor.getLong(5)
+                if (calendarId in muted) continue
+                // Mark seen only when an instance is actually kept — a skipped
+                // (finished or stale) instance must not shadow the next one.
+                if (eventId in seen) continue
+                // A timed event that has ended is over, even if it's today.
+                if (!allDay && end <= now) continue
 
                 // All-day events (birthdays, holidays) are stored as UTC
                 // midnight — read them as UTC or they land a day off. They're
@@ -97,9 +118,40 @@ object CalendarSource {
                 }
 
                 val days = ChronoUnit.DAYS.between(today, perceivedDate)
-                if (days >= 0) events.add(UpcomingEvent(eventId, title, date, days, time))
+                if (days < 0) continue
+                seen.add(eventId)
+                events.add(UpcomingEvent(eventId, title, date, days, time))
             }
         }
         return events
+    }
+
+    // The phone's calendars, for the mute list in settings.
+    fun calendars(context: Context): List<CalendarInfo> {
+        if (!hasPermission(context)) return emptyList()
+        val projection = arrayOf(
+            CalendarContract.Calendars._ID,
+            CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+            CalendarContract.Calendars.ACCOUNT_NAME,
+        )
+        val result = ArrayList<CalendarInfo>()
+        context.contentResolver.query(
+            CalendarContract.Calendars.CONTENT_URI,
+            projection,
+            null,
+            null,
+            CalendarContract.Calendars.CALENDAR_DISPLAY_NAME + " ASC",
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                result.add(
+                    CalendarInfo(
+                        id = cursor.getLong(0),
+                        name = cursor.getString(1) ?: "Calendar",
+                        account = cursor.getString(2) ?: "",
+                    )
+                )
+            }
+        }
+        return result
     }
 }

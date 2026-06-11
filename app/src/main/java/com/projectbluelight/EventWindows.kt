@@ -12,18 +12,81 @@ object EventWindows {
     // gym) never shows up uninvited.
     const val DEFAULT_DAYS = 0
 
+    // Sentinel for the "Smart" default: new events get a window suited to
+    // what they are — birthdays get shopping time, exams get study time.
+    const val SMART = -1
+
+    // Settings share the windows file; event keys are numeric, so the
+    // "setting:" prefix can never collide.
+    private const val KEY_DEFAULT = "setting:default"
+    private const val KEY_MUTED = "setting:muted"
+
     private fun prefs(context: Context) =
         context.getSharedPreferences("event_windows", Context.MODE_PRIVATE)
 
     fun daysFor(context: Context, eventId: Long): Int =
         prefs(context).getInt(eventId.toString(), DEFAULT_DAYS)
 
+    fun setDays(context: Context, eventId: Long, days: Int) {
+        prefs(context).edit().putInt(eventId.toString(), days).apply()
+    }
+
     // Distinguishes "chose Hidden" (stored 0) from "never asked" (no entry).
     // Both stay off the widget; bulk-promote respects the explicit choice.
     fun isSet(context: Context, eventId: Long): Boolean =
         prefs(context).contains(eventId.toString())
 
-    fun setDays(context: Context, eventId: Long, days: Int) {
-        prefs(context).edit().putInt(eventId.toString(), days).apply()
+    // ---------- Default window for new events ----------
+
+    // What a never-asked event gets. 0 (Hidden) preserves the original
+    // promote-by-hand behavior; SMART defers to the event's kind.
+    fun defaultDays(context: Context): Int =
+        prefs(context).getInt(KEY_DEFAULT, DEFAULT_DAYS)
+
+    fun setDefaultDays(context: Context, days: Int) {
+        prefs(context).edit().putInt(KEY_DEFAULT, days).apply()
+    }
+
+    // Whether the user has ever picked a default — drives the one-time
+    // "choose a default" nudge on the main screen.
+    fun isDefaultChosen(context: Context): Boolean =
+        prefs(context).contains(KEY_DEFAULT)
+
+    // The window an event actually has: the explicit choice if one exists,
+    // otherwise the default (resolved per kind when the default is SMART).
+    fun effectiveDaysFor(context: Context, event: UpcomingEvent): Int =
+        if (isSet(context, event.eventId)) daysFor(context, event.eventId)
+        else resolveDefault(defaultDays(context), event.title)
+
+    // Pure, so it's unit-testable alongside the smart table.
+    fun resolveDefault(defaultDays: Int, title: String): Int =
+        if (defaultDays == SMART) smartDays(Voice.kindOf(title)) else defaultDays
+
+    // Lead time by kind: enough days to actually do the thing the event
+    // implies — shop, pack, study — not just to know about it.
+    fun smartDays(kind: Voice.Kind): Int = when (kind) {
+        Voice.Kind.BIRTHDAY -> 14
+        Voice.Kind.WEDDING -> 14
+        Voice.Kind.EXAM -> 7
+        Voice.Kind.INTERVIEW -> 7
+        Voice.Kind.DEADLINE -> 7
+        Voice.Kind.TRAVEL -> 3
+        Voice.Kind.HEALTH -> 1
+        Voice.Kind.PERFORMANCE -> 1
+        Voice.Kind.GENERIC -> 1
+    }
+
+    // ---------- Muted calendars ----------
+
+    // Whole calendars (work spam, US Holidays) that never reach Bluelight.
+    fun mutedCalendars(context: Context): Set<Long> =
+        prefs(context).getStringSet(KEY_MUTED, emptySet())!!.map { it.toLong() }.toSet()
+
+    fun setCalendarMuted(context: Context, calendarId: Long, muted: Boolean) {
+        val next = mutedCalendars(context).toMutableSet()
+        if (muted) next.add(calendarId) else next.remove(calendarId)
+        // Always write a fresh set — mutating the one getStringSet returned
+        // is undefined behavior in SharedPreferences.
+        prefs(context).edit().putStringSet(KEY_MUTED, next.map { it.toString() }.toSet()).apply()
     }
 }

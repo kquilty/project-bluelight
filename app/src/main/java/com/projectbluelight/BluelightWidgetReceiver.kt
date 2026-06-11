@@ -11,8 +11,8 @@ class BluelightWidgetReceiver : GlanceAppWidgetReceiver() {
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         super.onUpdate(context, appWidgetManager, appWidgetIds)
-        // Make sure the 4am rollover refresh survives even if the app
+        // Make sure the background refreshes survive even if the app
         // itself is never opened again.
-        WidgetRefreshWorker.scheduleDailyAtRollover(context)
+        WidgetRefreshWorker.scheduleAll(context)
     }
 }

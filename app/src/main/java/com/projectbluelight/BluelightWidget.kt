@@ -95,10 +95,11 @@ class BluelightWidget : GlanceAppWidget() {
 
 // Every upcoming event that has entered its visibility window, soonest first.
 // This is the whole product: the widget is your calendar with each event
-// held back until it's close enough to matter.
+// held back until it's close enough to matter. The window is the explicit
+// choice when one exists, otherwise the user's default for new events.
 private fun visibleEvents(context: Context): List<UpcomingEvent> =
     CalendarSource.upcomingEvents(context).filter { event ->
-        val window = EventWindows.daysFor(context, event.eventId)
+        val window = EventWindows.effectiveDaysFor(context, event)
         window > 0 && event.daysUntil <= window
     }
 
