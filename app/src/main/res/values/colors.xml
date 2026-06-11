@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches DeepSpace in ui/Theme.kt — avoids a white flash before Compose draws. -->
+    <color name="window_background">#FF0A1422</color>
+    <color name="launcher_background">#FF0E1A2B</color>
+</resources>

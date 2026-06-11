@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A small light with a halo: the one thing that matters right now. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- outer halo ring -->
+    <path
+        android:pathData="M54,28 a26,26 0 1,1 -0.01,0 z"
+        android:strokeColor="#4DA3FF"
+        android:strokeWidth="3"
+        android:strokeAlpha="0.35"
+        android:fillColor="#00000000" />
+
+    <!-- core -->
+    <path
+        android:pathData="M54,42 a12,12 0 1,1 -0.01,0 z"
+        android:fillColor="#4DA3FF" />
+
+    <!-- bright center -->
+    <path
+        android:pathData="M54,48 a6,6 0 1,1 -0.01,0 z"
+        android:fillColor="#8CC5FF" />
+</vector>

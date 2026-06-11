@@ -6,12 +6,12 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@android:drawable/ic_dialog_info"
-        android:label="@string/app_name">
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.Bluelight">
 
-        <!-- A tiny screen whose only job today is to ask for calendar permission.
-             It also gives the app a launchable screen, which clears the
-             "Default Activity not found" warning for good. -->
+        <!-- The whole app: onboarding, then the lead-time list. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

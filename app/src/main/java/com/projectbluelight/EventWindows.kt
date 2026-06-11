@@ -7,9 +7,6 @@ import android.content.Context
 // that applies to every occurrence.
 object EventWindows {
 
-    // The slider stops. 0 means the event never shows on the widget.
-    val PRESETS = intArrayOf(0, 1, 2, 3, 5, 7, 14, 21, 30, 60, 90, 180, 365)
-
     // Everything starts hidden. The widget is curated headspace — events only
     // earn a spot when you give them a window, so recurring noise (standups,
     // gym) never shows up uninvited.

@@ -11,10 +11,13 @@ out. (Codename — public name TBD.)
   window, soonest first, each with a countdown ("12 days · Maya's birthday"). Events
   appear as their lead time begins and fall off once they pass. It refreshes daily,
   and whenever you change settings. Tap it to open the app.
-- The **app** is the settings screen: it lists every event on your calendar for the
-  next year, each with a slider for how far ahead it should appear on the widget
-  (1 day to 365). Everything starts hidden — you promote the events that deserve
-  headspace, so recurring noise (standups, gym) never shows up uninvited.
+- The **app** (full Jetpack Compose, Material 3, permanently dark) sorts your next
+  year into three sections: *On your widget*, *Waiting their turn*, and *Everything
+  else*. Tap any event and a bottom sheet asks the only question the product has:
+  **when does this start mattering?** — chips from 1 day to 1 year, with a live
+  preview line ("Will surface Dec 1 — 24 days ahead"). Everything starts hidden;
+  you promote what deserves headspace, so recurring noise (standups, gym) never
+  shows up uninvited.
 - Recurring events (birthdays, holidays) count down to their **next** occurrence,
   and one slider covers every occurrence.
 - Windows are stored on-device per event ID. Calendar access is read-only.
@@ -28,19 +31,20 @@ project-bluelight/
 ├── gradle.properties
 ├── gradle/wrapper/             ← Gradle version pointer (Android Studio finishes setup)
 └── app/
-    ├── build.gradle.kts        ← dependencies (Jetpack Glance, RecyclerView)
+    ├── build.gradle.kts        ← dependencies (Jetpack Glance, Compose + Material 3)
     └── src/main/
         ├── AndroidManifest.xml ← registers the widget + READ_CALENDAR
         ├── java/com/projectbluelight/
-        │   ├── BluelightWidget.kt          ← the tile (Glance UI + which event to show)
+        │   ├── BluelightWidget.kt          ← the tile (Glance UI + window filtering)
         │   ├── BluelightWidgetReceiver.kt  ← hooks the widget into Android
         │   ├── CalendarSource.kt           ← reads the next year of events
-        │   ├── EventWindows.kt             ← per-event visibility windows (SharedPreferences)
-        │   └── MainActivity.kt             ← permission prompt + settings screen
+        │   ├── EventWindows.kt             ← per-event lead times (SharedPreferences)
+        │   ├── MainActivity.kt             ← the whole app: onboarding + lead-time list
+        │   └── ui/Theme.kt                 ← Bluelight palette + Material 3 theme
         └── res/
-            ├── layout/                     ← settings screen + event row
+            ├── drawable/, mipmap-anydpi-v26/ ← adaptive launcher icon
             ├── xml/bluelight_widget_info.xml ← widget size + refresh
-            └── values/strings.xml
+            └── values/                     ← strings, colors, window theme
 ```
 
 ## Build & install (Android Studio)

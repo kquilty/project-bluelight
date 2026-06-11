@@ -10,6 +10,7 @@ import androidx.glance.GlanceModifier
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
@@ -59,6 +60,7 @@ private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean) {
         modifier = GlanceModifier
             .fillMaxSize()
             .background(BG)
+            .cornerRadius(24.dp)
             .padding(12.dp)
             .clickable(actionStartActivity<MainActivity>()), // tap the tile to open the app
         verticalAlignment = Alignment.Vertical.CenterVertically,
