@@ -278,10 +278,9 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
         val loaded = withContext(Dispatchers.IO) { CalendarSource.upcomingEvents(context) }
         // Only events the user has actually decided on enter the map — so a
         // missing key means "never asked", and an explicit 0 means "chose Hidden".
+        // Keyed by the merged event's primary ID; reads span every copy.
         loaded.forEach { e ->
-            if (EventWindows.isSet(context, e.eventId)) {
-                windows[e.eventId] = EventWindows.daysFor(context, e.eventId)
-            }
+            EventWindows.explicitDaysFor(context, e)?.let { windows[e.eventId] = it }
         }
         defaultDays = EventWindows.defaultDays(context)
         defaultChosen = EventWindows.isDefaultChosen(context)
@@ -427,7 +426,7 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
             currentDays = eff(event),
             onSelect = { days ->
                 windows[event.eventId] = days
-                saveWindows(listOf(event.eventId), days)
+                saveWindows(event.allIds, days)
             },
             onDismiss = { selected = null },
         )
@@ -598,6 +597,14 @@ private fun LeadTimeSheet(
             Text(event.title, style = MaterialTheme.typography.headlineSmall, color = Ink)
             Spacer(Modifier.height(4.dp))
             Text(sheetDateLine(event), style = MaterialTheme.typography.bodyMedium, color = InkDim)
+            if (event.allIds.size > 1) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "On ${event.allIds.size} calendars — one window covers them all.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = InkFaint,
+                )
+            }
             Spacer(Modifier.height(28.dp))
             Text("STARTS MATTERING", style = MaterialTheme.typography.labelSmall, color = InkFaint)
             Spacer(Modifier.height(12.dp))
@@ -875,7 +882,9 @@ private fun BulkPromoteSheet(
             Button(
                 onClick = {
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onApply(chosen.map { it.eventId }, days)
+                    // Every underlying ID, so duplicates on other calendars
+                    // get the window too.
+                    onApply(chosen.flatMap { it.allIds }, days)
                     onDismiss()
                 },
                 enabled = chosen.isNotEmpty(),
@@ -928,5 +937,6 @@ private fun previewLine(event: UpcomingEvent, days: Int): String = when {
     days == 0 -> "Stays off your widget."
     event.daysUntil == 0L -> "On your widget now — it's today."
     event.daysUntil <= days -> "On your widget now — ${event.daysUntil} days to go."
-    else -> "Will surface ${event.date.minusDays(days.toLong()).format(shortDate)} — $days days ahead."
+    else -> "Will surface ${event.date.minusDays(days.toLong()).format(shortDate)} — " +
+        if (days == 1) "1 day ahead." else "$days days ahead."
 }

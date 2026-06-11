@@ -54,9 +54,15 @@ object EventWindows {
 
     // The window an event actually has: the explicit choice if one exists,
     // otherwise the default (resolved per kind when the default is SMART).
+    // A merged duplicate checks every underlying ID; if old per-copy choices
+    // disagree, the most generous one wins until the next save aligns them.
     fun effectiveDaysFor(context: Context, event: UpcomingEvent): Int =
-        if (isSet(context, event.eventId)) daysFor(context, event.eventId)
-        else resolveDefault(defaultDays(context), event.title)
+        explicitDaysFor(context, event) ?: resolveDefault(defaultDays(context), event.title)
+
+    // The user's explicit choice across all of an event's calendar copies,
+    // or null if they were never asked.
+    fun explicitDaysFor(context: Context, event: UpcomingEvent): Int? =
+        event.allIds.filter { isSet(context, it) }.maxOfOrNull { daysFor(context, it) }
 
     // Pure, so it's unit-testable alongside the smart table.
     fun resolveDefault(defaultDays: Int, title: String): Int =

@@ -27,6 +27,9 @@ data class UpcomingEvent(
     val daysUntil: Long,
     // Start time, or null for all-day events (birthdays, holidays).
     val time: LocalTime? = null,
+    // Every calendar event ID this entry stands for. More than one means the
+    // same event lives on multiple calendars — shown once, window applies to all.
+    val allIds: List<Long> = listOf(eventId),
 )
 
 // The one place that reads the phone's calendar, shared by the widget and the
@@ -123,8 +126,19 @@ object CalendarSource {
                 events.add(UpcomingEvent(eventId, title, date, days, time))
             }
         }
-        return events
+        return mergeDuplicates(events)
     }
+
+    // The same title at the same moment on different calendars (yours and a
+    // shared one, say) is one thing in your life, not several. Show it once;
+    // the merged entry remembers every underlying ID so a window set on it
+    // covers all the copies.
+    internal fun mergeDuplicates(events: List<UpcomingEvent>): List<UpcomingEvent> =
+        events.groupBy { Triple(it.title.trim(), it.date, it.time) }
+            .values.map { dupes ->
+                if (dupes.size == 1) dupes.first()
+                else dupes.first().copy(allIds = dupes.flatMap { it.allIds })
+            }
 
     // The phone's calendars, for the mute list in settings.
     fun calendars(context: Context): List<CalendarInfo> {
