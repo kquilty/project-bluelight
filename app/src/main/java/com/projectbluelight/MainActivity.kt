@@ -359,9 +359,20 @@ private fun EventsScreen(
         }
     }
 
-    val inView = loaded.filter { EventWindows.isVisible(eff(it), it.daysUntil) }
-    val waiting = loaded.filter { eff(it) != 0 && !EventWindows.isVisible(eff(it), it.daysUntil) }
-    val resting = loaded.filter { eff(it) == 0 }
+    // Peek ahead: drag the header sideways and the whole screen lives a
+    // future day for a moment — countdowns shrink, windows open, the voice
+    // rewrites itself for that morning. Releasing snaps home; it's a look,
+    // never a state you can get stuck in.
+    var peekDays by remember { mutableIntStateOf(0) }
+    var peekAccum by remember { mutableStateOf(0f) }
+    val horizon = if (peekDays == 0) loaded else loaded.mapNotNull { e ->
+        val d = e.daysUntil - peekDays
+        if (d >= 0L) e.copy(daysUntil = d) else null
+    }
+
+    val inView = horizon.filter { EventWindows.isVisible(eff(it), it.daysUntil) }
+    val waiting = horizon.filter { eff(it) != 0 && !EventWindows.isVisible(eff(it), it.daysUntil) }
+    val resting = horizon.filter { eff(it) == 0 }
 
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -382,7 +393,26 @@ private fun EventsScreen(
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 110.dp),
     ) {
         item(key = "header") {
-            Column(Modifier.padding(bottom = 8.dp)) {
+            val headerHaptics = LocalHapticFeedback.current
+            Column(
+                Modifier
+                    .padding(bottom = 8.dp)
+                    .pointerInput(Unit) {
+                        detectHorizontalDragGestures(
+                            onDragEnd = { peekDays = 0; peekAccum = 0f },
+                            onDragCancel = { peekDays = 0; peekAccum = 0f },
+                        ) { change, amount ->
+                            change.consume()
+                            // Dragging left pulls the future toward you.
+                            peekAccum += -amount
+                            val next = (peekAccum / 28.dp.toPx()).roundToInt().coerceIn(0, 30)
+                            if (next != peekDays) {
+                                headerHaptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                peekDays = next
+                            }
+                        }
+                    },
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     BrandTitle()
                     Spacer(Modifier.weight(1f))
@@ -427,6 +457,16 @@ private fun EventsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = InkFaint,
                 )
+                if (peekDays > 0) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Peeking at ${
+                            CalendarSource.perceivedToday().plusDays(peekDays.toLong()).format(sheetDate)
+                        } — let go to come home.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AccentGlow,
+                    )
+                }
                 if (!hintSeen) {
                     Spacer(Modifier.height(6.dp))
                     Text(
