@@ -691,11 +691,10 @@ private fun LeadTimeSheet(
     onDismiss: () -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
-    // Old or hand-set values that aren't a preset still deserve a chip.
-    val choices = remember(currentDays) {
-        if (LEAD_TIMES.any { it.days == currentDays }) LEAD_TIMES
-        else (LEAD_TIMES + LeadTime(currentDays, "$currentDays days")).sortedBy { it.days }
-    }
+    val isPreset = LEAD_TIMES.any { it.days == currentDays }
+    // A hand-set value that isn't a preset arrives with the stepper already
+    // open and showing it — the stepper, not an extra chip, owns odd numbers.
+    var customOpen by remember(event.eventId) { mutableStateOf(!isPreset) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -724,11 +723,12 @@ private fun LeadTimeSheet(
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                choices.forEach { lead ->
+                LEAD_TIMES.forEach { lead ->
                     FilterChip(
                         selected = lead.days == currentDays,
                         onClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            customOpen = false
                             onSelect(lead.days)
                         },
                         label = { Text(lead.label) },
@@ -741,6 +741,40 @@ private fun LeadTimeSheet(
                             selectedLabelColor = OnAccent,
                         ),
                     )
+                }
+                FilterChip(
+                    selected = !isPreset,
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        if (!customOpen) {
+                            customOpen = true
+                            // Coming from Hidden, give the stepper somewhere to start.
+                            if (currentDays == 0) onSelect(10)
+                        }
+                    },
+                    label = { Text("Custom…") },
+                    shape = RoundedCornerShape(12.dp),
+                    border = null,
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Surface2,
+                        labelColor = InkDim,
+                        selectedContainerColor = Accent,
+                        selectedLabelColor = OnAccent,
+                    ),
+                )
+            }
+            if (customOpen) {
+                Spacer(Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StepperButton("−", enabled = currentDays > 1) { onSelect(currentDays - 1) }
+                    Text(
+                        text = if (currentDays == 1) "1 day" else "$currentDays days",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Ink,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.width(96.dp),
+                    )
+                    StepperButton("+", enabled = currentDays < 365) { onSelect(currentDays + 1) }
                 }
             }
             Spacer(Modifier.height(24.dp))
@@ -1056,6 +1090,31 @@ private fun BulkPromoteSheet(
     }
 }
 
+// One step of the custom window: a quiet round button, disabled at the rails
+// (1 day at the bottom — Hidden is the chips' job — and a year at the top).
+@Composable
+private fun StepperButton(glyph: String, enabled: Boolean, onClick: () -> Unit) {
+    val haptics = LocalHapticFeedback.current
+    Surface(
+        onClick = {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            onClick()
+        },
+        enabled = enabled,
+        shape = CircleShape,
+        color = Surface2,
+        modifier = Modifier.size(40.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = glyph,
+                style = MaterialTheme.typography.titleLarge,
+                color = if (enabled) Accent else InkFaint,
+            )
+        }
+    }
+}
+
 // ---------- Wording ----------
 
 private val cardDate = DateTimeFormatter.ofPattern("EEE, MMM d")
@@ -1087,7 +1146,9 @@ private fun sheetDateLine(event: UpcomingEvent): String = when (event.daysUntil)
 private fun previewLine(event: UpcomingEvent, days: Int): String = when {
     days == 0 -> "Stays off your widget."
     event.daysUntil == 0L -> "On your widget now — it's today."
-    event.daysUntil <= days -> "On your widget now — ${event.daysUntil} days to go."
+    event.daysUntil <= days ->
+        if (event.daysUntil == 1L) "On your widget now — 1 day to go."
+        else "On your widget now — ${event.daysUntil} days to go."
     else -> "Will surface ${event.date.minusDays(days.toLong()).format(shortDate)} — " +
         if (days == 1) "1 day ahead." else "$days days ahead."
 }
