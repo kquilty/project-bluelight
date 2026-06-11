@@ -109,6 +109,30 @@ class VoiceTest {
         assertTrue(line, "Team offsite" in line && "Saturday" in line)
     }
 
+    // Sunday's calm comes with a receipt — proof the quiet was earned.
+    @Test
+    fun sundayCalmComesWithAReceipt() {
+        val sunday = LocalDateTime.of(2026, 6, 14, 12, 0)
+        assertEquals(
+            "Four things came and went this week — all handled, no fires.",
+            Voice.line(emptyList(), sunday, passedLastWeek = 4),
+        )
+        assertEquals(
+            "One thing came and went this week — handled, no fuss.",
+            Voice.line(emptyList(), sunday, passedLastWeek = 1),
+        )
+    }
+
+    @Test
+    fun recapWaitsForSundayAndNeverInterruptsUrgency() {
+        // Thursday: no recap even with a busy week behind you.
+        assertTrue("came and went" !in Voice.line(emptyList(), noon, passedLastWeek = 4))
+        // Sunday with something due today: the day wins.
+        val sunday = LocalDateTime.of(2026, 6, 14, 12, 0)
+        val line = Voice.line(listOf(event("Dentist", 0)), sunday, passedLastWeek = 4)
+        assertEquals("Dentist today — by lunch it's behind you.", line)
+    }
+
     // "Today at 4", not "16:00" — the hour the way a friend says it.
     @Test
     fun clockSpeaksLikeAFriend() {

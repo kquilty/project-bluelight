@@ -52,8 +52,13 @@ object Voice {
         return Kind.GENERIC
     }
 
-    // The one line for right now. `events` must be the in-view list, soonest first.
-    fun line(events: List<UpcomingEvent>, now: LocalDateTime = LocalDateTime.now()): String {
+    // The one line for right now. `events` must be the in-view list, soonest
+    // first. `passedLastWeek` feeds the Sunday recap when nothing is urgent.
+    fun line(
+        events: List<UpcomingEvent>,
+        now: LocalDateTime = LocalDateTime.now(),
+        passedLastWeek: Int = 0,
+    ): String {
         val today = events.firstOrNull { it.daysUntil == 0L }
         val tomorrow = events.firstOrNull { it.daysUntil == 1L }
         val lateNight = now.hour < CalendarSource.DAY_ROLLOVER_HOUR
@@ -65,8 +70,14 @@ object Voice {
         if (today != null) return todayLine(today)
         if (tomorrow != null) return tomorrowLine(tomorrow)
         events.firstNotNullOfOrNull { approachLine(it) }?.let { return it }
-        return ambientLine(events, now)
+        return ambientLine(events, now, passedLastWeek)
     }
+
+    // "Four", for the recap — counts read warmer as words.
+    private val COUNT_WORDS =
+        listOf("Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine")
+
+    private fun countWord(n: Int): String = COUNT_WORDS.getOrNull(n) ?: "$n"
 
     private fun hourLabel(hour: Int) = if (hour == 0) "midnight" else "${hour}am"
 
@@ -124,8 +135,13 @@ object Voice {
     }
 
     // Nothing needs saying — say something calm. Rotates daily so the widget
-    // feels alive without ever feeling random.
-    private fun ambientLine(events: List<UpcomingEvent>, now: LocalDateTime): String {
+    // feels alive without ever feeling random. On Sundays the calm earns a
+    // receipt: the week's watched events that came and went without fuss.
+    private fun ambientLine(events: List<UpcomingEvent>, now: LocalDateTime, passedLastWeek: Int): String {
+        if (now.dayOfWeek == java.time.DayOfWeek.SUNDAY && passedLastWeek > 0) {
+            return if (passedLastWeek == 1) "One thing came and went this week — handled, no fuss."
+            else "${countWord(passedLastWeek)} things came and went this week — all handled, no fires."
+        }
         val day = now.dayOfYear
         if (events.isEmpty()) {
             val calm = listOf(

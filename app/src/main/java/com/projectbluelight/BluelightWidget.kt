@@ -65,6 +65,7 @@ class BluelightWidget : GlanceAppWidget() {
         // Read the calendar BEFORE composing, so the first paint has real data.
         val initial = withContext(Dispatchers.IO) { visibleEvents(context) }
         val initialScale = EventWindows.widgetFontScale(context)
+        val initialPassed = withContext(Dispatchers.IO) { CalendarSource.passedWatchedLastWeek(context) }
         provideContent {
             // updateAll() on a live session only RECOMPOSES — it does not re-run
             // provideGlance — so data captured above goes stale the moment the
@@ -73,11 +74,18 @@ class BluelightWidget : GlanceAppWidget() {
             val state = currentState<Preferences>()
             var events by remember { mutableStateOf(initial) }
             var scale by remember { mutableStateOf(initialScale) }
+            var passed by remember { mutableStateOf(initialPassed) }
             LaunchedEffect(state) {
                 events = withContext(Dispatchers.IO) { visibleEvents(context) }
                 scale = EventWindows.widgetFontScale(context)
+                passed = withContext(Dispatchers.IO) { CalendarSource.passedWatchedLastWeek(context) }
             }
-            WidgetContent(events, CalendarSource.hasPermission(context), Voice.line(events), scale)
+            WidgetContent(
+                events,
+                CalendarSource.hasPermission(context),
+                Voice.line(events, passedLastWeek = passed),
+                scale,
+            )
         }
     }
 

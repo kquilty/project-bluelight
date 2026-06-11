@@ -140,6 +140,47 @@ object CalendarSource {
                 else dupes.first().copy(allIds = dupes.flatMap { it.allIds })
             }
 
+    // How many watched events came and went in the last seven days — fuel for
+    // the voice's Sunday recap. "Watched" means any window other than Hidden.
+    fun passedWatchedLastWeek(context: Context): Int {
+        if (!hasPermission(context)) return 0
+
+        val now = System.currentTimeMillis()
+        val weekAgo = now - 7L * 24 * 60 * 60 * 1000
+        val builder = CalendarContract.Instances.CONTENT_URI.buildUpon()
+        ContentUris.appendId(builder, weekAgo)
+        ContentUris.appendId(builder, now)
+
+        val projection = arrayOf(
+            CalendarContract.Instances.TITLE,
+            CalendarContract.Instances.EVENT_ID,
+            CalendarContract.Instances.END,
+            CalendarContract.Instances.CALENDAR_ID,
+        )
+
+        val muted = EventWindows.mutedCalendars(context)
+        val defaultDays = EventWindows.defaultDays(context)
+        val seen = HashSet<Long>()
+        var passed = 0
+        context.contentResolver.query(
+            builder.build(), projection, null, null, null,
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val title = cursor.getString(0) ?: continue
+                val eventId = cursor.getLong(1)
+                val end = cursor.getLong(2)
+                if (cursor.getLong(3) in muted) continue
+                if (end > now) continue
+                if (!seen.add(eventId)) continue
+                val window =
+                    if (EventWindows.isSet(context, eventId)) EventWindows.daysFor(context, eventId)
+                    else EventWindows.resolveDefault(defaultDays, title)
+                if (window != 0) passed++
+            }
+        }
+        return passed
+    }
+
     // The phone's calendars, for the mute list in settings.
     fun calendars(context: Context): List<CalendarInfo> {
         if (!hasPermission(context)) return emptyList()

@@ -319,8 +319,10 @@ private fun EventsScreen(
     var settingsTick by remember { mutableIntStateOf(0) }
     var defaultDays by remember { mutableIntStateOf(EventWindows.DEFAULT_DAYS) }
     var defaultChosen by remember { mutableStateOf(true) }
+    var passedWeek by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(resumeTick, settingsTick) {
+        passedWeek = withContext(Dispatchers.IO) { CalendarSource.passedWatchedLastWeek(context) }
         val loaded = withContext(Dispatchers.IO) { CalendarSource.upcomingEvents(context) }
         // Only events the user has actually decided on enter the map — so a
         // missing key means "never asked", and an explicit 0 means "chose Hidden".
@@ -392,7 +394,7 @@ private fun EventsScreen(
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = Voice.line(inView),
+                    text = Voice.line(inView, passedLastWeek = passedWeek),
                     style = MaterialTheme.typography.bodyLarge,
                     fontStyle = FontStyle.Italic,
                     color = InkDim,
