@@ -69,6 +69,17 @@ project-bluelight/
 6. Long-press your home screen → **Widgets** → find **Project Bluelight** → drag the
    tile onto the screen.
 
+## Release build
+
+Release signing reads `keystore.properties` at the repo root (gitignored, alongside
+`bluelight-release.jks`). **Back both files up somewhere safe** — without the key you
+can't ship an upgrade, only a reinstall. Build with:
+
+```
+gradle assembleRelease   # → app/build/outputs/apk/release/app-release.apk
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
+
 ## Publish to GitHub (optional)
 
 From inside this folder:

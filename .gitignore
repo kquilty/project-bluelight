@@ -1,6 +1,12 @@
 *.iml
 .gradle/
 /local.properties
+# Release signing — never commit the key or its passwords.
+/bluelight-release.jks
+/keystore.properties
+# Personal data pulled off the phone during the debug→release migration.
+/event_windows_backup.xml
+*.apk
 /.idea/
 .DS_Store
 build/
