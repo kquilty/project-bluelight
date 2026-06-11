@@ -2,6 +2,8 @@ package com.projectbluelight
 
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.format.TextStyle
+import java.util.Locale
 
 // Bluelight's voice: one quiet line that proves the widget understands what
 // it's looking at. A calendar event isn't data — it's stakes. A rehearsal
@@ -33,6 +35,14 @@ object Voice {
         val h = ((time.hour + 11) % 12) + 1
         return if (time.minute == 0) "$h" else "$h:${"%02d".format(time.minute)}"
     }
+
+    // "Saturday" for events 2–6 days out: close enough that the weekday is
+    // unambiguous, and a friend says "is Saturday", not "in 3 days". At 7 days
+    // the weekday collides with today's own, so the count takes over. Null
+    // means: use the number.
+    private fun weekday(e: UpcomingEvent): String? =
+        if (e.daysUntil in 2L..6L) e.date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH)
+        else null
 
     fun kindOf(title: String): Kind {
         val t = title.lowercase()
@@ -99,13 +109,16 @@ object Voice {
     // anything else would just be noise.
     private fun approachLine(e: UpcomingEvent): String? {
         val n = e.daysUntil
+        // Within the week, name the day; past that, count.
+        val lead = weekday(e)?.let { "${e.title} is $it." } ?: "$n days to ${e.title}."
+        val dueLead = weekday(e)?.let { "${e.title} lands $it." } ?: "${e.title} lands in $n days."
         return when (kindOf(e.title)) {
-            Kind.BIRTHDAY -> if (n in 2..21) "$n days to ${e.title}. Gift sorted?" else null
-            Kind.TRAVEL -> if (n in 2..3) "$n days to ${e.title}. The good packing happens early." else null
-            Kind.WEDDING -> if (n in 2..14) "${e.title} in $n days. Outfit, gift, RSVP — all set?" else null
-            Kind.EXAM -> if (n in 2..7) "$n days to ${e.title}. Little and often beats the all-nighter." else null
-            Kind.INTERVIEW -> if (n in 2..7) "$n days to ${e.title}. One good story beats ten facts." else null
-            Kind.DEADLINE -> if (n in 2..7) "${e.title} in $n days. Start ugly, finish early." else null
+            Kind.BIRTHDAY -> if (n in 2..21) "$lead Gift sorted?" else null
+            Kind.TRAVEL -> if (n in 2..3) "$lead The good packing happens early." else null
+            Kind.WEDDING -> if (n in 2..14) "$lead Outfit, gift, RSVP — all set?" else null
+            Kind.EXAM -> if (n in 2..7) "$lead Little and often beats the all-nighter." else null
+            Kind.INTERVIEW -> if (n in 2..7) "$lead One good story beats ten facts." else null
+            Kind.DEADLINE -> if (n in 2..7) "$dueLead Start ugly, finish early." else null
             else -> null
         }
     }
@@ -123,10 +136,11 @@ object Voice {
             return calm[day % calm.size]
         }
         val next = events.first()
+        val whenBit = weekday(next)?.let { "on $it" } ?: "in ${next.daysUntil} days"
         val steady = listOf(
-            "Nothing urgent. ${next.title} leads, ${next.daysUntil} days out.",
-            "All steady. Next up: ${next.title}, in ${next.daysUntil} days.",
-            "No fires. ${next.title} arrives in ${next.daysUntil} days.",
+            "Nothing urgent. ${next.title} leads, $whenBit.",
+            "All steady. Next up: ${next.title}, $whenBit.",
+            "No fires. ${next.title} arrives $whenBit.",
         )
         return steady[day % steady.size]
     }

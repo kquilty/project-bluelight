@@ -82,6 +82,33 @@ class VoiceTest {
         assertEquals("Skit rehearsal tomorrow. Run it once in your head, then rest.", line)
     }
 
+    // Within the week a friend names the day; the count would be colder.
+    // (The fixture date, June 20 2026, is a Saturday.)
+    @Test
+    fun withinTheWeekSpeaksWeekdayNotCount() {
+        val line = Voice.line(listOf(event("Chem 101 Final", 3)), noon)
+        assertEquals("Chem 101 Final is Saturday. Little and often beats the all-nighter.", line)
+    }
+
+    @Test
+    fun birthdayWithinTheWeekNamesTheDay() {
+        val line = Voice.line(listOf(event("Maya's birthday", 4)), noon)
+        assertEquals("Maya's birthday is Saturday. Gift sorted?", line)
+    }
+
+    // At 7 days the weekday collides with today's own — stay numeric.
+    @Test
+    fun sevenDaysOutStaysNumeric() {
+        val line = Voice.line(listOf(event("Chem 101 Final", 7)), noon)
+        assertEquals("7 days to Chem 101 Final. Little and often beats the all-nighter.", line)
+    }
+
+    @Test
+    fun calmLineNamesTheDayWhenClose() {
+        val line = Voice.line(listOf(event("Team offsite", 5)), noon)
+        assertTrue(line, "Team offsite" in line && "Saturday" in line)
+    }
+
     // "Today at 4", not "16:00" — the hour the way a friend says it.
     @Test
     fun clockSpeaksLikeAFriend() {
