@@ -18,10 +18,13 @@ import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
+import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
+import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.width
+import androidx.glance.text.FontStyle
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
@@ -32,6 +35,7 @@ import kotlinx.coroutines.withContext
 private val ACCENT = Color(0xFF4DA3FF)
 private val BG = Color(0xFF0E1A2B)
 private val FG = Color(0xFFDCE6F2)
+private val DIM = Color(0xFF93A7C0)
 
 class BluelightWidget : GlanceAppWidget() {
 
@@ -39,8 +43,9 @@ class BluelightWidget : GlanceAppWidget() {
         // Read the calendar BEFORE drawing, so the tile has real data to show.
         val events = withContext(Dispatchers.IO) { visibleEvents(context) }
         val granted = CalendarSource.hasPermission(context)
+        val voice = Voice.line(events)
         provideContent {
-            WidgetContent(events, granted)
+            WidgetContent(events, granted, voice)
         }
     }
 }
@@ -55,7 +60,7 @@ private fun visibleEvents(context: Context): List<UpcomingEvent> =
     }
 
 @Composable
-private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean) {
+private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean, voice: String) {
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
@@ -66,20 +71,24 @@ private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean) {
         verticalAlignment = Alignment.Vertical.CenterVertically,
         horizontalAlignment = Alignment.Horizontal.Start,
     ) {
-        when {
-            !granted -> {
-                Big("Tap to set up")
-                Small("grant calendar access")
-            }
-            events.isEmpty() -> {
-                Big("All clear")
-                Small("tap to choose what shows here")
-            }
-            else -> {
-                LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
-                    items(events, itemId = { it.eventId }) { event ->
-                        EventRow(event)
-                    }
+        if (!granted) {
+            Big("Tap to set up")
+            Small("grant calendar access")
+            return@Column
+        }
+        // The voice leads. The list is reference; this line is the point.
+        Text(
+            text = voice,
+            style = TextStyle(color = ColorProvider(DIM), fontSize = 12.sp, fontStyle = FontStyle.Italic),
+        )
+        if (events.isEmpty()) {
+            Spacer(GlanceModifier.height(6.dp))
+            Small("tap to choose what shows here")
+        } else {
+            Spacer(GlanceModifier.height(8.dp))
+            LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
+                items(events, itemId = { it.eventId }) { event ->
+                    EventRow(event)
                 }
             }
         }

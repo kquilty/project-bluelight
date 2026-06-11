@@ -7,10 +7,19 @@ out. (Codename — public name TBD.)
 
 ## How it works
 
-- The **widget** is a scrollable list of every event that has entered its visibility
-  window, soonest first, each with a countdown ("12 days · Maya's birthday"). Events
-  appear as their lead time begins and fall off once they pass. It refreshes daily,
-  and whenever you change settings. Tap it to open the app.
+- The **voice**: one quiet line leads the widget and the app, written for the moment
+  you're actually in. It knows what kind of thing an event is (rehearsal, flight,
+  interview, exam, birthday, deadline…) and what time it is. Up at 1am with rehearsal
+  tomorrow: *"It's 1am. Skit rehearsal is tomorrow — rest is part of the
+  performance."* Flight tomorrow: *"Pack tonight; morning-you packs badly."* Nothing
+  looming: *"All clear. The quiet is the feature."* It only ever speaks about events
+  you promoted — it never nags about things you chose to hide. (`Voice.kt`, pure
+  Kotlin, fully unit-tested.)
+- The **widget** is the voice line plus a scrollable list of every event that has
+  entered its visibility window, soonest first, each with a countdown ("12 days ·
+  Maya's birthday"). Events appear as their lead time begins and fall off once they
+  pass. It refreshes daily at the 4am rollover, and whenever you change settings.
+  Tap it to open the app.
 - The **app** (full Jetpack Compose, Material 3, permanently dark) sorts your next
   year into three sections: *On your widget*, *Waiting their turn*, and *Everything
   else*. Tap any event and a bottom sheet asks the only question the product has:

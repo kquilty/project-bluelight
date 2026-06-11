@@ -75,6 +75,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -279,11 +280,18 @@ private fun EventsScreen(resumeTick: Int, saveWindow: (Long, Int) -> Unit) {
         item(key = "header") {
             Column(Modifier.padding(bottom = 8.dp)) {
                 BrandTitle()
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = Voice.line(inView),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontStyle = FontStyle.Italic,
+                    color = InkDim,
+                )
+                Spacer(Modifier.height(6.dp))
                 Text(
                     text = "${inView.size} in view · ${waiting.size} waiting · ${resting.size} resting",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = InkDim,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = InkFaint,
                 )
             }
         }

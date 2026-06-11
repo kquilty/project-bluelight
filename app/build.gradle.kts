@@ -52,4 +52,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.6")
     // Refreshes the widget daily at the perceived-day rollover (4am).
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    testImplementation("junit:junit:4.13.2")
 }
