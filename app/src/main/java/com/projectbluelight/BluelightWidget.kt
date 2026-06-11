@@ -155,10 +155,13 @@ private fun EventRow(event: UpcomingEvent) {
             event.daysUntil == 1L -> "Tomorrow"
             else -> "${event.daysUntil} days"
         }
+        // Wide enough for the longest label ("Tomorrow") so nothing wraps
+        // mid-word; the only two-line countdown is the deliberate "Today / at 4".
         Text(
             text = countdown,
             style = TextStyle(color = solid(ACCENT), fontSize = 14.sp, fontWeight = FontWeight.Bold),
-            modifier = GlanceModifier.width(64.dp),
+            maxLines = 2,
+            modifier = GlanceModifier.width(82.dp),
         )
         Text(
             text = event.title,
