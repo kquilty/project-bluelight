@@ -104,6 +104,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        WidgetRefreshWorker.scheduleDailyAtRollover(this)
         setContent {
             BluelightTheme {
                 BluelightApp(saveWindow = { eventId, days ->

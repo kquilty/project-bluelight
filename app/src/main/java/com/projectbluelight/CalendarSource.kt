@@ -8,7 +8,9 @@ import android.provider.CalendarContract
 import androidx.core.content.ContextCompat
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 
 data class UpcomingEvent(
@@ -22,6 +24,16 @@ data class UpcomingEvent(
 // settings screen. Uses the Instances table so recurring events (Christmas,
 // birthdays) expand into their actual next date instead of their original one.
 object CalendarSource {
+
+    // The day doesn't roll over at midnight — nobody's "tomorrow" starts at
+    // 12:01am. Until this hour, you're still living in yesterday: at 1am, an
+    // event later today reads "Tomorrow", and an event at 2am is "Today"
+    // (it's tonight). Everything (now and event times) is shifted back by
+    // this many hours before comparing dates.
+    const val DAY_ROLLOVER_HOUR = 4L
+
+    fun perceivedToday(): LocalDate =
+        LocalDateTime.now().minusHours(DAY_ROLLOVER_HOUR).toLocalDate()
 
     fun hasPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR) ==
@@ -43,6 +55,7 @@ object CalendarSource {
             CalendarContract.Instances.TITLE,
             CalendarContract.Instances.BEGIN,
             CalendarContract.Instances.EVENT_ID,
+            CalendarContract.Instances.ALL_DAY,
         )
 
         val events = ArrayList<UpcomingEvent>()
@@ -54,14 +67,30 @@ object CalendarSource {
             null,
             CalendarContract.Instances.BEGIN + " ASC",
         )?.use { cursor ->
-            val today = LocalDate.now()
+            val today = perceivedToday()
             while (cursor.moveToNext()) {
                 val title = cursor.getString(0) ?: continue
                 val begin = cursor.getLong(1)
                 val eventId = cursor.getLong(2)
+                val allDay = cursor.getInt(3) == 1
                 if (!seen.add(eventId)) continue
-                val date = Instant.ofEpochMilli(begin).atZone(ZoneId.systemDefault()).toLocalDate()
-                val days = ChronoUnit.DAYS.between(today, date)
+
+                // All-day events (birthdays, holidays) are stored as UTC
+                // midnight — read them as UTC or they land a day off. They're
+                // date-only, so the rollover shift doesn't apply: your niece's
+                // birthday on the 14th is the 14th.
+                val date: LocalDate
+                val perceivedDate: LocalDate
+                if (allDay) {
+                    date = Instant.ofEpochMilli(begin).atZone(ZoneOffset.UTC).toLocalDate()
+                    perceivedDate = date
+                } else {
+                    val local = Instant.ofEpochMilli(begin).atZone(ZoneId.systemDefault()).toLocalDateTime()
+                    date = local.toLocalDate()
+                    perceivedDate = local.minusHours(DAY_ROLLOVER_HOUR).toLocalDate()
+                }
+
+                val days = ChronoUnit.DAYS.between(today, perceivedDate)
                 if (days >= 0) events.add(UpcomingEvent(eventId, title, date, days))
             }
         }
