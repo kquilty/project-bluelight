@@ -6,8 +6,9 @@ you chose for it. (Codename — public name TBD.)
 
 ## How it works
 
-- The **widget** shows the soonest upcoming event that has entered its visibility
-  window, as a countdown ("25 days / until Christmas"). It refreshes daily, and
+- The **widget** is a scrollable list of every event that has entered its visibility
+  window, soonest first, each with a countdown ("25 days · Christmas"). Events appear
+  as their day approaches and fall off once they pass. It refreshes daily, and
   whenever you change settings. Tap it to open the app.
 - The **app** is the settings screen: it lists every event on your calendar for the
   next year, each with a slider for how far ahead it should appear on the widget

@@ -10,12 +10,17 @@ import androidx.glance.GlanceModifier
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.lazy.LazyColumn
+import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
+import androidx.glance.layout.Row
 import androidx.glance.layout.fillMaxSize
+import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.padding
+import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
@@ -31,28 +36,30 @@ class BluelightWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         // Read the calendar BEFORE drawing, so the tile has real data to show.
-        val event = withContext(Dispatchers.IO) { nextVisibleEvent(context) }
+        val events = withContext(Dispatchers.IO) { visibleEvents(context) }
         val granted = CalendarSource.hasPermission(context)
         provideContent {
-            WidgetContent(event, granted)
+            WidgetContent(events, granted)
         }
     }
 }
 
-// The soonest upcoming event that has entered its visibility window.
-private fun nextVisibleEvent(context: Context): UpcomingEvent? =
-    CalendarSource.upcomingEvents(context).firstOrNull { event ->
+// Every upcoming event that has entered its visibility window, soonest first.
+// This is the whole product: the widget is your calendar with each event
+// held back until it's close enough to matter.
+private fun visibleEvents(context: Context): List<UpcomingEvent> =
+    CalendarSource.upcomingEvents(context).filter { event ->
         val window = EventWindows.daysFor(context, event.eventId)
         window > 0 && event.daysUntil <= window
     }
 
 @Composable
-private fun WidgetContent(event: UpcomingEvent?, granted: Boolean) {
+private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean) {
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
             .background(BG)
-            .padding(16.dp)
+            .padding(12.dp)
             .clickable(actionStartActivity<MainActivity>()), // tap the tile to open the app
         verticalAlignment = Alignment.Vertical.CenterVertically,
         horizontalAlignment = Alignment.Horizontal.Start,
@@ -62,19 +69,44 @@ private fun WidgetContent(event: UpcomingEvent?, granted: Boolean) {
                 Big("Tap to set up")
                 Small("grant calendar access")
             }
-            event == null -> {
+            events.isEmpty() -> {
                 Small("Nothing in view yet")
             }
             else -> {
-                val (big, small) = when (event.daysUntil) {
-                    0L -> "Today" to event.title
-                    1L -> "Tomorrow" to event.title
-                    else -> "${event.daysUntil} days" to "until ${event.title}"
+                LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
+                    items(events, itemId = { it.eventId }) { event ->
+                        EventRow(event)
+                    }
                 }
-                Big(big)
-                Small(small)
             }
         }
+    }
+}
+
+@Composable
+private fun EventRow(event: UpcomingEvent) {
+    Row(
+        modifier = GlanceModifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable(actionStartActivity<MainActivity>()), // list rows swallow the tile's tap
+        verticalAlignment = Alignment.Vertical.CenterVertically,
+    ) {
+        val countdown = when (event.daysUntil) {
+            0L -> "Today"
+            1L -> "1 day"
+            else -> "${event.daysUntil} days"
+        }
+        Text(
+            text = countdown,
+            style = TextStyle(color = ColorProvider(ACCENT), fontSize = 14.sp, fontWeight = FontWeight.Bold),
+            modifier = GlanceModifier.width(64.dp),
+        )
+        Text(
+            text = event.title,
+            style = TextStyle(color = ColorProvider(FG), fontSize = 14.sp),
+            maxLines = 1,
+        )
     }
 }
 
