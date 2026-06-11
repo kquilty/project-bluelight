@@ -93,6 +93,32 @@ object EventWindows {
         Voice.Kind.GENERIC -> 1
     }
 
+    // ---------- "Handled" answers to the voice ----------
+
+    private const val KEY_HANDLED = "setting:handled"
+
+    // "Gift sorted?" — answered. Stored as "eventId:epochDay" so the answer
+    // expires with the occurrence: next year's birthday asks again.
+    fun handledIds(context: Context, events: List<UpcomingEvent>): Set<Long> {
+        val entries = prefs(context).getStringSet(KEY_HANDLED, emptySet())!!
+        val dateById = events.associate { it.eventId to it.date.toEpochDay() }
+        return entries.mapNotNull { entry ->
+            val id = entry.substringBefore(":").toLongOrNull()
+            val day = entry.substringAfter(":", "").toLongOrNull()
+            if (id != null && day != null && dateById[id] == day) id else null
+        }.toSet()
+    }
+
+    fun setHandled(context: Context, event: UpcomingEvent) {
+        val today = CalendarSource.perceivedToday().toEpochDay()
+        // Prune answers whose day has passed while we're here.
+        val entries = prefs(context).getStringSet(KEY_HANDLED, emptySet())!!
+            .filter { (it.substringAfter(":", "").toLongOrNull() ?: -1L) >= today }
+            .toMutableSet()
+        entries.add("${event.eventId}:${event.date.toEpochDay()}")
+        prefs(context).edit().putStringSet(KEY_HANDLED, entries).apply()
+    }
+
     // ---------- One-time hints ----------
 
     private const val KEY_SCRUB_HINT = "setting:scrub_hint_seen"

@@ -348,6 +348,8 @@ private fun EventsScreen(
         windows[e.eventId] ?: EventWindows.resolveDefault(defaultDays, e.title)
 
     var hintSeen by remember { mutableStateOf(EventWindows.isScrubHintSeen(context)) }
+    var handledTick by remember { mutableIntStateOf(0) }
+    val handledSet = remember(loaded, handledTick) { EventWindows.handledIds(context, loaded) }
     val scrubCommit: (UpcomingEvent, Int) -> Unit = { e, days ->
         windows[e.eventId] = days
         saveWindows(e.allIds, days)
@@ -393,12 +395,32 @@ private fun EventsScreen(
                     }
                 }
                 Spacer(Modifier.height(6.dp))
+                val voice = Voice.utterance(inView, passedLastWeek = passedWeek, handled = handledSet)
                 Text(
-                    text = Voice.line(inView, passedLastWeek = passedWeek),
+                    text = voice.text,
                     style = MaterialTheme.typography.bodyLarge,
                     fontStyle = FontStyle.Italic,
                     color = InkDim,
                 )
+                // The voice asked a question — let one tap answer it.
+                if (voice.answerable) {
+                    TextButton(
+                        onClick = {
+                            loaded.firstOrNull { it.eventId == voice.subjectId }?.let { subject ->
+                                EventWindows.setHandled(context, subject)
+                                handledTick++
+                                refreshWidget()
+                            }
+                        },
+                        contentPadding = PaddingValues(vertical = 0.dp),
+                    ) {
+                        Text(
+                            "Handled ✓",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Accent,
+                        )
+                    }
+                }
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = "${inView.size} in view · ${waiting.size} waiting · ${resting.size} resting",

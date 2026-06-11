@@ -75,15 +75,18 @@ class BluelightWidget : GlanceAppWidget() {
             var events by remember { mutableStateOf(initial) }
             var scale by remember { mutableStateOf(initialScale) }
             var passed by remember { mutableStateOf(initialPassed) }
+            var handled by remember { mutableStateOf(EventWindows.handledIds(context, initial)) }
             LaunchedEffect(state) {
-                events = withContext(Dispatchers.IO) { visibleEvents(context) }
+                val fresh = withContext(Dispatchers.IO) { visibleEvents(context) }
+                events = fresh
+                handled = EventWindows.handledIds(context, fresh)
                 scale = EventWindows.widgetFontScale(context)
                 passed = withContext(Dispatchers.IO) { CalendarSource.passedWatchedLastWeek(context) }
             }
             WidgetContent(
                 events,
                 CalendarSource.hasPermission(context),
-                Voice.line(events, passedLastWeek = passed),
+                Voice.line(events, passedLastWeek = passed, handled = handled),
                 scale,
             )
         }

@@ -109,6 +109,35 @@ class VoiceTest {
         assertTrue(line, "Team offsite" in line && "Saturday" in line)
     }
 
+    // The voice asks "Gift sorted?" — and remembers the answer.
+    @Test
+    fun voiceRemembersTheGiftIsHandled() {
+        val e = event("Maya's birthday", 4)
+        assertEquals(
+            "Maya's birthday is Saturday. Gift's handled — just show up.",
+            Voice.line(listOf(e), noon, handled = setOf(e.eventId)),
+        )
+    }
+
+    @Test
+    fun questionsAreAnswerableUntilAnswered() {
+        val e = event("Maya's birthday", 4)
+        val asked = Voice.utterance(listOf(e), noon)
+        assertTrue(asked.answerable)
+        assertEquals(e.eventId, asked.subjectId)
+        val answered = Voice.utterance(listOf(e), noon, handled = setOf(e.eventId))
+        assertTrue(!answered.answerable)
+    }
+
+    @Test
+    fun packingHandledChangesTheEveningLine() {
+        val e = event("Flight to Denver", 1)
+        assertEquals(
+            "Flight to Denver tomorrow. Bags packed — morning-you says thanks.",
+            Voice.line(listOf(e), noon, handled = setOf(e.eventId)),
+        )
+    }
+
     // After 9pm tomorrow leads the list; by day the soonest-first order holds.
     @Test
     fun eveningsBelongToTomorrow() {

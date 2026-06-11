@@ -65,25 +65,42 @@ object Voice {
         return Kind.GENERIC
     }
 
+    // A spoken line that knows what it's about. `answerable` means the line
+    // asks something the user can settle with one tap ("Gift sorted?").
+    data class Utterance(
+        val text: String,
+        val subjectId: Long? = null,
+        val answerable: Boolean = false,
+    )
+
     // The one line for right now. `events` must be the in-view list, soonest
-    // first. `passedLastWeek` feeds the Sunday recap when nothing is urgent.
+    // first. `passedLastWeek` feeds the Sunday recap when nothing is urgent;
+    // `handled` holds events whose prep the user marked done.
     fun line(
         events: List<UpcomingEvent>,
         now: LocalDateTime = LocalDateTime.now(),
         passedLastWeek: Int = 0,
-    ): String {
+        handled: Set<Long> = emptySet(),
+    ): String = utterance(events, now, passedLastWeek, handled).text
+
+    fun utterance(
+        events: List<UpcomingEvent>,
+        now: LocalDateTime = LocalDateTime.now(),
+        passedLastWeek: Int = 0,
+        handled: Set<Long> = emptySet(),
+    ): Utterance {
         val today = events.firstOrNull { it.daysUntil == 0L }
         val tomorrow = events.firstOrNull { it.daysUntil == 1L }
         val lateNight = now.hour < CalendarSource.DAY_ROLLOVER_HOUR
 
         if (lateNight) {
-            if (tomorrow != null) return lateNightLine(tomorrow, hourLabel(now.hour))
-            if (today != null) return "Tonight, for real: ${today.title}."
+            if (tomorrow != null) return Utterance(lateNightLine(tomorrow, hourLabel(now.hour)), tomorrow.eventId)
+            if (today != null) return Utterance("Tonight, for real: ${today.title}.", today.eventId)
         }
-        if (today != null) return todayLine(today)
-        if (tomorrow != null) return tomorrowLine(tomorrow)
-        events.firstNotNullOfOrNull { approachLine(it) }?.let { return it }
-        return ambientLine(events, now, passedLastWeek)
+        if (today != null) return Utterance(todayLine(today), today.eventId)
+        if (tomorrow != null) return tomorrowUtterance(tomorrow, tomorrow.eventId in handled)
+        events.firstNotNullOfOrNull { approachUtterance(it, it.eventId in handled) }?.let { return it }
+        return Utterance(ambientLine(events, now, passedLastWeek))
     }
 
     // "Four", for the recap — counts read warmer as words.
@@ -117,6 +134,24 @@ object Voice {
         Kind.GENERIC -> "Today: ${e.title}."
     }
 
+    // Tomorrow-eve prep that can be marked done; once handled, the voice
+    // stops asking and starts reassuring.
+    private val ANSWERABLE_TOMORROW = setOf(Kind.BIRTHDAY, Kind.TRAVEL, Kind.INTERVIEW)
+
+    private fun tomorrowUtterance(e: UpcomingEvent, isHandled: Boolean): Utterance {
+        val kind = kindOf(e.title)
+        if (isHandled) {
+            val text = when (kind) {
+                Kind.BIRTHDAY -> "${e.title} tomorrow. Gift's ready — sleep easy."
+                Kind.TRAVEL -> "${e.title} tomorrow. Bags packed — morning-you says thanks."
+                Kind.INTERVIEW -> "${e.title} tomorrow. All prepped — early night anyway."
+                else -> tomorrowLine(e)
+            }
+            return Utterance(text, e.eventId)
+        }
+        return Utterance(tomorrowLine(e), e.eventId, answerable = kind in ANSWERABLE_TOMORROW)
+    }
+
     private fun tomorrowLine(e: UpcomingEvent): String = when (kindOf(e.title)) {
         Kind.BIRTHDAY -> "${e.title} tomorrow. Card, gift, or words — pick one tonight."
         Kind.TRAVEL -> "${e.title} tomorrow. Pack tonight; morning-you packs badly."
@@ -130,19 +165,26 @@ object Voice {
     }
 
     // Further out, only kinds with a real preparation task get a nudge —
-    // anything else would just be noise.
-    private fun approachLine(e: UpcomingEvent): String? {
+    // anything else would just be noise. Birthday and wedding nudges are
+    // questions, so they're answerable; once handled, the voice relaxes.
+    private fun approachUtterance(e: UpcomingEvent, isHandled: Boolean): Utterance? {
         val n = e.daysUntil
         // Within the week, name the day; past that, count.
         val lead = weekday(e)?.let { "${e.title} is $it." } ?: "$n days to ${e.title}."
         val dueLead = weekday(e)?.let { "${e.title} lands $it." } ?: "${e.title} lands in $n days."
         return when (kindOf(e.title)) {
-            Kind.BIRTHDAY -> if (n in 2..21) "$lead Gift sorted?" else null
-            Kind.TRAVEL -> if (n in 2..3) "$lead The good packing happens early." else null
-            Kind.WEDDING -> if (n in 2..14) "$lead Outfit, gift, RSVP — all set?" else null
-            Kind.EXAM -> if (n in 2..7) "$lead Little and often beats the all-nighter." else null
-            Kind.INTERVIEW -> if (n in 2..7) "$lead One good story beats ten facts." else null
-            Kind.DEADLINE -> if (n in 2..7) "$dueLead Start ugly, finish early." else null
+            Kind.BIRTHDAY -> if (n in 2..21) {
+                if (isHandled) Utterance("$lead Gift's handled — just show up.", e.eventId)
+                else Utterance("$lead Gift sorted?", e.eventId, answerable = true)
+            } else null
+            Kind.WEDDING -> if (n in 2..14) {
+                if (isHandled) Utterance("$lead All set — just bring the dancing.", e.eventId)
+                else Utterance("$lead Outfit, gift, RSVP — all set?", e.eventId, answerable = true)
+            } else null
+            Kind.TRAVEL -> if (n in 2..3) Utterance("$lead The good packing happens early.", e.eventId) else null
+            Kind.EXAM -> if (n in 2..7) Utterance("$lead Little and often beats the all-nighter.", e.eventId) else null
+            Kind.INTERVIEW -> if (n in 2..7) Utterance("$lead One good story beats ten facts.", e.eventId) else null
+            Kind.DEADLINE -> if (n in 2..7) Utterance("$dueLead Start ugly, finish early.", e.eventId) else null
             else -> null
         }
     }
