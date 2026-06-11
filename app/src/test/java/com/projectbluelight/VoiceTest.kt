@@ -5,6 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 class VoiceTest {
 
@@ -79,5 +80,15 @@ class VoiceTest {
     fun fourAmIsMorningNotLateNight() {
         val line = Voice.line(listOf(event("Skit rehearsal", 1)), LocalDateTime.of(2026, 6, 11, 4, 1))
         assertEquals("Skit rehearsal tomorrow. Run it once in your head, then rest.", line)
+    }
+
+    // "Today at 4", not "16:00" — the hour the way a friend says it.
+    @Test
+    fun clockSpeaksLikeAFriend() {
+        assertEquals("4", Voice.clock(LocalTime.of(16, 0)))
+        assertEquals("4:30", Voice.clock(LocalTime.of(16, 30)))
+        assertEquals("9:05", Voice.clock(LocalTime.of(9, 5)))
+        assertEquals("12", Voice.clock(LocalTime.of(12, 0)))
+        assertEquals("12:15", Voice.clock(LocalTime.of(0, 15)))
     }
 }

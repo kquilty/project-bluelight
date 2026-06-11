@@ -538,14 +538,18 @@ private fun countdown(days: Long): String = when (days) {
     else -> "$days days"
 }
 
+// "Today at 4" for timed events; all-day events are just "Today".
+private fun todayLabel(event: UpcomingEvent): String =
+    event.time?.let { "Today at ${Voice.clock(it)}" } ?: "Today"
+
 private fun cardDateLine(event: UpcomingEvent): String = when (event.daysUntil) {
-    0L -> "Today"
+    0L -> todayLabel(event)
     1L -> "Tomorrow"
     else -> "${event.date.format(cardDate)} · in ${event.daysUntil} days"
 }
 
 private fun sheetDateLine(event: UpcomingEvent): String = when (event.daysUntil) {
-    0L -> "${event.date.format(sheetDate)} · today"
+    0L -> "${event.date.format(sheetDate)} · ${todayLabel(event).lowercase()}"
     1L -> "${event.date.format(sheetDate)} · tomorrow"
     else -> "${event.date.format(sheetDate)} · in ${event.daysUntil} days"
 }

@@ -147,9 +147,12 @@ private fun EventRow(event: UpcomingEvent) {
             .clickable(actionStartActivity<MainActivity>()), // list rows swallow the tile's tap
         verticalAlignment = Alignment.Vertical.CenterVertically,
     ) {
-        val countdown = when (event.daysUntil) {
-            0L -> "Today"
-            1L -> "1 day"
+        // A timed event today shows its hour — "Today / at 4" — on two lines so
+        // the countdown column keeps its width.
+        val countdown = when {
+            event.daysUntil == 0L && event.time != null -> "Today\nat ${Voice.clock(event.time)}"
+            event.daysUntil == 0L -> "Today"
+            event.daysUntil == 1L -> "Tomorrow"
             else -> "${event.daysUntil} days"
         }
         Text(

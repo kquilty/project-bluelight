@@ -1,6 +1,7 @@
 package com.projectbluelight
 
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 // Bluelight's voice: one quiet line that proves the widget understands what
 // it's looking at. A calendar event isn't data — it's stakes. A rehearsal
@@ -25,6 +26,13 @@ object Voice {
         Kind.PERFORMANCE to listOf("rehearsal", "audition", "recital", "concert", "gig", "skit", "performance", "show"),
         Kind.DEADLINE to listOf("deadline", "due", "submit", "submission"),
     )
+
+    // "4", "4:30" — the hour the way a friend says it, not a timestamp.
+    // You know whether your own appointment is morning or afternoon.
+    fun clock(time: LocalTime): String {
+        val h = ((time.hour + 11) % 12) + 1
+        return if (time.minute == 0) "$h" else "$h:${"%02d".format(time.minute)}"
+    }
 
     fun kindOf(title: String): Kind {
         val t = title.lowercase()

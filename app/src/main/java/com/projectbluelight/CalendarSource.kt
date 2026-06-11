@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
@@ -18,6 +19,8 @@ data class UpcomingEvent(
     val title: String,
     val date: LocalDate,
     val daysUntil: Long,
+    // Start time, or null for all-day events (birthdays, holidays).
+    val time: LocalTime? = null,
 )
 
 // The one place that reads the phone's calendar, shared by the widget and the
@@ -81,17 +84,20 @@ object CalendarSource {
                 // birthday on the 14th is the 14th.
                 val date: LocalDate
                 val perceivedDate: LocalDate
+                val time: LocalTime?
                 if (allDay) {
                     date = Instant.ofEpochMilli(begin).atZone(ZoneOffset.UTC).toLocalDate()
                     perceivedDate = date
+                    time = null
                 } else {
                     val local = Instant.ofEpochMilli(begin).atZone(ZoneId.systemDefault()).toLocalDateTime()
                     date = local.toLocalDate()
                     perceivedDate = local.minusHours(DAY_ROLLOVER_HOUR).toLocalDate()
+                    time = local.toLocalTime()
                 }
 
                 val days = ChronoUnit.DAYS.between(today, perceivedDate)
-                if (days >= 0) events.add(UpcomingEvent(eventId, title, date, days))
+                if (days >= 0) events.add(UpcomingEvent(eventId, title, date, days, time))
             }
         }
         return events
