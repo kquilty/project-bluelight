@@ -87,6 +87,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -497,6 +498,7 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
                 settingsTick++
                 refreshWidget()
             },
+            refreshWidget = refreshWidget,
             onDismiss = { settingsOpen = false },
         )
     }
@@ -771,17 +773,29 @@ private fun defaultCaption(days: Int): String = when (days) {
     else -> "Every new event surfaces ${DEFAULT_CHOICES.first { it.days == days }.label} ahead. Your per-event choices always win."
 }
 
+// Each chip renders at the size it sets — the label is its own preview.
+private data class FontChoice(val scale: Float, val label: String, val previewSp: Int)
+
+private val FONT_CHOICES = listOf(
+    FontChoice(0.85f, "Small", 12),
+    FontChoice(1f, "Default", 14),
+    FontChoice(1.15f, "Large", 16),
+    FontChoice(1.3f, "Huge", 18),
+)
+
 @Composable
 private fun SettingsSheet(
     currentDefault: Int,
     onPickDefault: (Int) -> Unit,
     onCalendarsChanged: () -> Unit,
+    refreshWidget: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     var calendars by remember { mutableStateOf<List<CalendarInfo>>(emptyList()) }
     var muted by remember { mutableStateOf(setOf<Long>()) }
+    var fontScale by remember { mutableStateOf(EventWindows.widgetFontScale(context)) }
     LaunchedEffect(Unit) {
         calendars = withContext(Dispatchers.IO) { CalendarSource.calendars(context) }
         muted = EventWindows.mutedCalendars(context)
@@ -829,6 +843,32 @@ private fun SettingsSheet(
                     style = MaterialTheme.typography.bodySmall,
                     color = if (days == EventWindows.DEFAULT_DAYS) InkFaint else AccentGlow,
                 )
+            }
+
+            Spacer(Modifier.height(28.dp))
+            Text("WIDGET TEXT", style = MaterialTheme.typography.labelSmall, color = InkFaint)
+            Spacer(Modifier.height(12.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FONT_CHOICES.forEach { choice ->
+                    FilterChip(
+                        selected = choice.scale == fontScale,
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            EventWindows.setWidgetFontScale(context, choice.scale)
+                            fontScale = choice.scale
+                            refreshWidget()
+                        },
+                        label = { Text(choice.label, fontSize = choice.previewSp.sp) },
+                        shape = RoundedCornerShape(12.dp),
+                        border = null,
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = Surface2,
+                            labelColor = InkDim,
+                            selectedContainerColor = Accent,
+                            selectedLabelColor = OnAccent,
+                        ),
+                    )
+                }
             }
 
             if (calendars.isNotEmpty()) {

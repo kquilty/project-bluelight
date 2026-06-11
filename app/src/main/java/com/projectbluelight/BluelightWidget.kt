@@ -61,6 +61,7 @@ class BluelightWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         // Read the calendar BEFORE composing, so the first paint has real data.
         val initial = withContext(Dispatchers.IO) { visibleEvents(context) }
+        val initialScale = EventWindows.widgetFontScale(context)
         provideContent {
             // updateAll() on a live session only RECOMPOSES — it does not re-run
             // provideGlance — so data captured above goes stale the moment the
@@ -68,10 +69,12 @@ class BluelightWidget : GlanceAppWidget() {
             // widget state that refreshAll() bumps.
             val state = currentState<Preferences>()
             var events by remember { mutableStateOf(initial) }
+            var scale by remember { mutableStateOf(initialScale) }
             LaunchedEffect(state) {
                 events = withContext(Dispatchers.IO) { visibleEvents(context) }
+                scale = EventWindows.widgetFontScale(context)
             }
-            WidgetContent(events, CalendarSource.hasPermission(context), Voice.line(events))
+            WidgetContent(events, CalendarSource.hasPermission(context), Voice.line(events), scale)
         }
     }
 
@@ -104,7 +107,7 @@ private fun visibleEvents(context: Context): List<UpcomingEvent> =
     }
 
 @Composable
-private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean, voice: String) {
+private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean, voice: String, scale: Float) {
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
@@ -116,23 +119,23 @@ private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean, voice: 
         horizontalAlignment = Alignment.Horizontal.Start,
     ) {
         if (!granted) {
-            Big("Tap to set up")
-            Small("grant calendar access")
+            Big("Tap to set up", scale)
+            Small("grant calendar access", scale)
             return@Column
         }
         // The voice leads. The list is reference; this line is the point.
         Text(
             text = voice,
-            style = TextStyle(color = solid(DIM), fontSize = 12.sp, fontStyle = FontStyle.Italic),
+            style = TextStyle(color = solid(DIM), fontSize = (12 * scale).sp, fontStyle = FontStyle.Italic),
         )
         if (events.isEmpty()) {
             Spacer(GlanceModifier.height(6.dp))
-            Small("tap to choose what shows here")
+            Small("tap to choose what shows here", scale)
         } else {
             Spacer(GlanceModifier.height(8.dp))
             LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
                 items(events, itemId = { it.eventId }) { event ->
-                    EventRow(event)
+                    EventRow(event, scale)
                 }
             }
         }
@@ -140,7 +143,7 @@ private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean, voice: 
 }
 
 @Composable
-private fun EventRow(event: UpcomingEvent) {
+private fun EventRow(event: UpcomingEvent, scale: Float) {
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
@@ -157,33 +160,34 @@ private fun EventRow(event: UpcomingEvent) {
             else -> "${event.daysUntil} days"
         }
         // Wide enough for the longest label ("Tomorrow") so nothing wraps
-        // mid-word; the only two-line countdown is the deliberate "Today / at 4".
+        // mid-word — the column grows with the text size. The only two-line
+        // countdown is the deliberate "Today / at 4".
         Text(
             text = countdown,
-            style = TextStyle(color = solid(ACCENT), fontSize = 14.sp, fontWeight = FontWeight.Bold),
+            style = TextStyle(color = solid(ACCENT), fontSize = (14 * scale).sp, fontWeight = FontWeight.Bold),
             maxLines = 2,
-            modifier = GlanceModifier.width(82.dp),
+            modifier = GlanceModifier.width((82 * scale).dp),
         )
         Text(
             text = event.title,
-            style = TextStyle(color = solid(FG), fontSize = 14.sp),
+            style = TextStyle(color = solid(FG), fontSize = (14 * scale).sp),
             maxLines = 1,
         )
     }
 }
 
 @Composable
-private fun Big(text: String) {
+private fun Big(text: String, scale: Float) {
     Text(
         text = text,
-        style = TextStyle(color = solid(ACCENT), fontSize = 28.sp, fontWeight = FontWeight.Bold),
+        style = TextStyle(color = solid(ACCENT), fontSize = (28 * scale).sp, fontWeight = FontWeight.Bold),
     )
 }
 
 @Composable
-private fun Small(text: String) {
+private fun Small(text: String, scale: Float) {
     Text(
         text = text,
-        style = TextStyle(color = solid(FG), fontSize = 14.sp),
+        style = TextStyle(color = solid(FG), fontSize = (14 * scale).sp),
     )
 }

@@ -82,6 +82,19 @@ object EventWindows {
         Voice.Kind.GENERIC -> 1
     }
 
+    // ---------- Widget text size ----------
+
+    private const val KEY_FONT = "setting:widget_font"
+
+    // Multiplier on every widget font size (and the countdown column width,
+    // so "Tomorrow" keeps fitting). 1.0 is the designed size.
+    fun widgetFontScale(context: Context): Float =
+        prefs(context).getFloat(KEY_FONT, 1f)
+
+    fun setWidgetFontScale(context: Context, scale: Float) {
+        prefs(context).edit().putFloat(KEY_FONT, scale).apply()
+    }
+
     // ---------- Muted calendars ----------
 
     // Whole calendars (work spam, US Holidays) that never reach Bluelight.
