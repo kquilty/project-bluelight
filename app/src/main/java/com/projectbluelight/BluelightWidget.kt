@@ -1,9 +1,13 @@
 package com.projectbluelight
 
+import android.annotation.SuppressLint
 import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,6 +49,13 @@ private val BG = Color(0xFF0E1A2B)
 private val FG = Color(0xFFDCE6F2)
 private val DIM = Color(0xFF93A7C0)
 
+// ColorProvider(Color) is public API, but the IDE's RestrictedApi check flags
+// it anyway: it matches the generated ColorProviderKt facade, where @RestrictTo
+// siblings live next to the public overload. One suppression here instead of
+// one per call site. (CLI lint agrees the calls are fine.)
+@SuppressLint("RestrictedApi")
+private fun solid(color: Color): ColorProvider = ColorProvider(color)
+
 class BluelightWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
@@ -56,8 +67,9 @@ class BluelightWidget : GlanceAppWidget() {
             // user promotes an event. Re-read inside composition, keyed on the
             // widget state that refreshAll() bumps.
             val state = currentState<Preferences>()
-            val events by produceState(initial, state) {
-                value = withContext(Dispatchers.IO) { visibleEvents(context) }
+            var events by remember { mutableStateOf(initial) }
+            LaunchedEffect(state) {
+                events = withContext(Dispatchers.IO) { visibleEvents(context) }
             }
             WidgetContent(events, CalendarSource.hasPermission(context), Voice.line(events))
         }
@@ -110,7 +122,7 @@ private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean, voice: 
         // The voice leads. The list is reference; this line is the point.
         Text(
             text = voice,
-            style = TextStyle(color = ColorProvider(DIM), fontSize = 12.sp, fontStyle = FontStyle.Italic),
+            style = TextStyle(color = solid(DIM), fontSize = 12.sp, fontStyle = FontStyle.Italic),
         )
         if (events.isEmpty()) {
             Spacer(GlanceModifier.height(6.dp))
@@ -142,12 +154,12 @@ private fun EventRow(event: UpcomingEvent) {
         }
         Text(
             text = countdown,
-            style = TextStyle(color = ColorProvider(ACCENT), fontSize = 14.sp, fontWeight = FontWeight.Bold),
+            style = TextStyle(color = solid(ACCENT), fontSize = 14.sp, fontWeight = FontWeight.Bold),
             modifier = GlanceModifier.width(64.dp),
         )
         Text(
             text = event.title,
-            style = TextStyle(color = ColorProvider(FG), fontSize = 14.sp),
+            style = TextStyle(color = solid(FG), fontSize = 14.sp),
             maxLines = 1,
         )
     }
@@ -157,7 +169,7 @@ private fun EventRow(event: UpcomingEvent) {
 private fun Big(text: String) {
     Text(
         text = text,
-        style = TextStyle(color = ColorProvider(ACCENT), fontSize = 28.sp, fontWeight = FontWeight.Bold),
+        style = TextStyle(color = solid(ACCENT), fontSize = 28.sp, fontWeight = FontWeight.Bold),
     )
 }
 
@@ -165,6 +177,6 @@ private fun Big(text: String) {
 private fun Small(text: String) {
     Text(
         text = text,
-        style = TextStyle(color = ColorProvider(FG), fontSize = 14.sp),
+        style = TextStyle(color = solid(FG), fontSize = 14.sp),
     )
 }
