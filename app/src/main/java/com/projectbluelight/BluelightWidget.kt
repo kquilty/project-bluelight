@@ -15,6 +15,8 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.action.ActionParameters
+import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -141,13 +143,16 @@ private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean, voice: 
     }
 }
 
+// Rows know who they are: tapping one opens the app with that event's sheet up.
+private val OPEN_EVENT = ActionParameters.Key<Long>(MainActivity.EXTRA_OPEN_EVENT)
+
 @Composable
 private fun EventRow(event: UpcomingEvent, scale: Float) {
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clickable(actionStartActivity<MainActivity>()), // list rows swallow the tile's tap
+            .clickable(actionStartActivity<MainActivity>(actionParametersOf(OPEN_EVENT to event.eventId))),
         verticalAlignment = Alignment.Vertical.CenterVertically,
     ) {
         // A timed event today shows its hour — "Today / at 4" — on two lines so

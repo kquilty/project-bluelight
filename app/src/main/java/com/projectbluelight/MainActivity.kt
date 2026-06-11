@@ -116,10 +116,23 @@ import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        // A widget row arrives with the event it stands for.
+        const val EXTRA_OPEN_EVENT = "open_event_id"
+    }
+
+    private val openEventId = mutableStateOf<Long?>(null)
+
+    private fun readOpenEvent(intent: Intent?) {
+        val id = intent?.getLongExtra(EXTRA_OPEN_EVENT, -1L) ?: -1L
+        if (id >= 0) openEventId.value = id
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         WidgetRefreshWorker.scheduleAll(this)
+        readOpenEvent(intent)
         setContent {
             BluelightTheme {
                 BluelightApp(
@@ -130,16 +143,28 @@ class MainActivity : ComponentActivity() {
                     refreshWidget = {
                         lifecycleScope.launch { BluelightWidget.refreshAll(applicationContext) }
                     },
+                    openEvent = openEventId.value,
+                    onOpenEventConsumed = { openEventId.value = null },
                 )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        readOpenEvent(intent)
     }
 }
 
 // ---------- App shell: permission gate + resume-aware reload ----------
 
 @Composable
-private fun BluelightApp(saveWindows: (List<Long>, Int) -> Unit, refreshWidget: () -> Unit) {
+private fun BluelightApp(
+    saveWindows: (List<Long>, Int) -> Unit,
+    refreshWidget: () -> Unit,
+    openEvent: Long?,
+    onOpenEventConsumed: () -> Unit,
+) {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(CalendarSource.hasPermission(context)) }
     var deniedOnce by remember { mutableStateOf(false) }
@@ -187,7 +212,13 @@ private fun BluelightApp(saveWindows: (List<Long>, Int) -> Unit, refreshWidget: 
             )
         }
         if (granted) {
-            EventsScreen(resumeTick = resumeTick, saveWindows = saveWindows, refreshWidget = refreshWidget)
+            EventsScreen(
+                resumeTick = resumeTick,
+                saveWindows = saveWindows,
+                refreshWidget = refreshWidget,
+                openEvent = openEvent,
+                onOpenEventConsumed = onOpenEventConsumed,
+            )
         } else {
             OnboardingScreen(
                 deniedOnce = deniedOnce,
@@ -272,7 +303,13 @@ private fun GlowOrb(modifier: Modifier = Modifier) {
 // ---------- The main screen: three sections of attention ----------
 
 @Composable
-private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit, refreshWidget: () -> Unit) {
+private fun EventsScreen(
+    resumeTick: Int,
+    saveWindows: (List<Long>, Int) -> Unit,
+    refreshWidget: () -> Unit,
+    openEvent: Long?,
+    onOpenEventConsumed: () -> Unit,
+) {
     val context = LocalContext.current
     var events by remember { mutableStateOf<List<UpcomingEvent>?>(null) }
     val windows = remember { mutableStateMapOf<Long, Int>() }
@@ -456,6 +493,27 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
             items(resting, key = { it.eventId }) { event ->
                 EventCard(event, 0, Section.Resting, Modifier.animateItem(), { scrubCommit(event, it) }) { selected = event }
             }
+        }
+    }
+
+    // A widget row was tapped: open that event's sheet and scroll to its card.
+    LaunchedEffect(openEvent, loaded) {
+        if (openEvent != null) {
+            val target = loaded.firstOrNull { openEvent in it.allIds }
+            if (target != null) {
+                selected = target
+                val pos = when {
+                    inView.any { it.eventId == target.eventId } ->
+                        1 + nudgeRows + 1 + inView.indexOfFirst { it.eventId == target.eventId }
+                    waiting.any { it.eventId == target.eventId } ->
+                        idxWait + 1 + waiting.indexOfFirst { it.eventId == target.eventId }
+                    else ->
+                        idxRest + (if (resting.size > 1) 2 else 1) +
+                            resting.indexOfFirst { it.eventId == target.eventId }
+                }
+                listState.scrollToItem(pos.coerceAtLeast(0))
+            }
+            onOpenEventConsumed()
         }
     }
 
