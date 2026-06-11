@@ -29,6 +29,19 @@ object Voice {
         Kind.DEADLINE to listOf("deadline", "due", "submit", "submission"),
     )
 
+    // After dark the day flips: what's left of today is mostly done, and
+    // tomorrow is what you can still do something about. From 9pm to the 4am
+    // rollover, tomorrow's events lead the widget and today's step back.
+    fun isTonight(now: LocalDateTime = LocalDateTime.now()): Boolean =
+        now.hour >= 21 || now.hour < CalendarSource.DAY_ROLLOVER_HOUR
+
+    fun tonightOrder(
+        events: List<UpcomingEvent>,
+        now: LocalDateTime = LocalDateTime.now(),
+    ): List<UpcomingEvent> =
+        if (!isTonight(now)) events
+        else events.sortedBy { if (it.daysUntil == 1L) -1L else it.daysUntil }
+
     // "4", "4:30" — the hour the way a friend says it, not a timestamp.
     // You know whether your own appointment is morning or afternoon.
     fun clock(time: LocalTime): String {

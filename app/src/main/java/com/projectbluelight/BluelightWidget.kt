@@ -143,9 +143,12 @@ private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean, voice: 
             Small("tap to choose what shows here", scale)
         } else {
             Spacer(GlanceModifier.height(8.dp))
+            // Evenings belong to tomorrow: after 9pm tomorrow's events lead
+            // and today's survivors step into the background.
+            val tonight = Voice.isTonight()
             LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
-                items(events, itemId = { it.eventId }) { event ->
-                    EventRow(event, scale)
+                items(Voice.tonightOrder(events), itemId = { it.eventId }) { event ->
+                    EventRow(event, scale, dimmed = tonight && event.daysUntil == 0L)
                 }
             }
         }
@@ -156,7 +159,7 @@ private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean, voice: 
 private val OPEN_EVENT = ActionParameters.Key<Long>(MainActivity.EXTRA_OPEN_EVENT)
 
 @Composable
-private fun EventRow(event: UpcomingEvent, scale: Float) {
+private fun EventRow(event: UpcomingEvent, scale: Float, dimmed: Boolean = false) {
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
@@ -178,7 +181,7 @@ private fun EventRow(event: UpcomingEvent, scale: Float) {
         Text(
             text = countdown,
             style = TextStyle(
-                color = solid(if (event.daysUntil == 0L) GLOW else ACCENT),
+                color = solid(if (dimmed) DIM else if (event.daysUntil == 0L) GLOW else ACCENT),
                 fontSize = (14 * scale).sp,
                 fontWeight = FontWeight.Bold,
             ),
@@ -187,7 +190,7 @@ private fun EventRow(event: UpcomingEvent, scale: Float) {
         )
         Text(
             text = event.title,
-            style = TextStyle(color = solid(FG), fontSize = (14 * scale).sp),
+            style = TextStyle(color = solid(if (dimmed) DIM else FG), fontSize = (14 * scale).sp),
             maxLines = 1,
         )
     }

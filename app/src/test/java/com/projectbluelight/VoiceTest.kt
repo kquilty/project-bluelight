@@ -109,6 +109,21 @@ class VoiceTest {
         assertTrue(line, "Team offsite" in line && "Saturday" in line)
     }
 
+    // After 9pm tomorrow leads the list; by day the soonest-first order holds.
+    @Test
+    fun eveningsBelongToTomorrow() {
+        val events = listOf(event("Dentist", 0), event("Flight to Denver", 1), event("Riding", 3))
+        val tenPm = LocalDateTime.of(2026, 6, 11, 22, 0)
+        assertEquals(
+            listOf("Flight to Denver", "Dentist", "Riding"),
+            Voice.tonightOrder(events, tenPm).map { it.title },
+        )
+        assertEquals(
+            listOf("Dentist", "Flight to Denver", "Riding"),
+            Voice.tonightOrder(events, noon).map { it.title },
+        )
+    }
+
     // Sunday's calm comes with a receipt — proof the quiet was earned.
     @Test
     fun sundayCalmComesWithAReceipt() {
