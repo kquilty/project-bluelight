@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -70,6 +71,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -303,11 +305,23 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
     val waiting = loaded.filter { eff(it) > 0 && it.daysUntil > eff(it) }
     val resting = loaded.filter { eff(it) == 0 }
 
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+
+    // Item indices of the section headers — must mirror the LazyColumn layout
+    // below (header, optional nudge, view header, view rows or empty row, …).
+    val nudgeRows = if (!defaultChosen) 1 else 0
+    val idxWait = 1 + nudgeRows + 1 + (if (inView.isEmpty()) 1 else inView.size)
+    val idxRest = idxWait + (if (waiting.isNotEmpty()) 1 + waiting.size else 0)
+
+    Box(Modifier.fillMaxSize()) {
+
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 48.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 110.dp),
     ) {
         item(key = "header") {
             Column(Modifier.padding(bottom = 8.dp)) {
@@ -420,6 +434,44 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
         }
     }
 
+    // Always-reachable rail: where you are, where you can jump, and the gear —
+    // no scrolling back to the top required.
+    if (loaded.isNotEmpty()) {
+        // Which section the eye is on. A short last section never reaches the
+        // top of the screen, so hitting the end of the list counts as being there.
+        val firstVisible = listState.firstVisibleItemIndex
+        val atEnd = !listState.canScrollForward
+        val currentSection = when {
+            resting.isNotEmpty() && (firstVisible >= idxRest || atEnd) -> 2
+            waiting.isNotEmpty() && (firstVisible >= idxWait || atEnd) -> 1
+            else -> 0
+        }
+        SectionRail(
+            inViewCount = inView.size,
+            waitingCount = waiting.size,
+            restingCount = resting.size,
+            current = currentSection,
+            onJump = { section ->
+                scope.launch {
+                    listState.animateScrollToItem(
+                        when (section) {
+                            1 -> idxWait
+                            2 -> idxRest
+                            else -> 0
+                        }
+                    )
+                }
+            },
+            onSettings = { settingsOpen = true },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 12.dp),
+        )
+    }
+
+    }
+
     selected?.let { event ->
         LeadTimeSheet(
             event = event,
@@ -460,6 +512,65 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
                 saveWindows(ids, days)
             },
             onDismiss = { bulkOpen = false },
+        )
+    }
+}
+
+// ---------- The section rail: the app's only chrome ----------
+
+@Composable
+private fun SectionRail(
+    inViewCount: Int,
+    waitingCount: Int,
+    restingCount: Int,
+    current: Int,
+    onJump: (Int) -> Unit,
+    onSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(24.dp),
+        color = Surface1,
+        border = BorderStroke(1.dp, Accent.copy(alpha = 0.18f)),
+        shadowElevation = 8.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RailChip("Widget", inViewCount, current == 0) { onJump(0) }
+            if (waitingCount > 0) RailChip("Waiting", waitingCount, current == 1) { onJump(1) }
+            if (restingCount > 0) RailChip("Resting", restingCount, current == 2) { onJump(2) }
+            IconButton(onClick = onSettings, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.Rounded.Settings,
+                    contentDescription = "Settings",
+                    tint = InkDim,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RailChip(label: String, count: Int, active: Boolean, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+        modifier = Modifier.height(36.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (active) Accent else InkDim,
+        )
+        Spacer(Modifier.width(5.dp))
+        Text(
+            text = "$count",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (active) AccentGlow else InkFaint,
         )
     }
 }

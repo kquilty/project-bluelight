@@ -21,8 +21,8 @@ android {
         applicationId = "com.projectbluelight"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.6"
+        versionCode = 10
+        versionName = "1.7"
     }
 
     signingConfigs {
