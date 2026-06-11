@@ -16,6 +16,17 @@ object EventWindows {
     // what they are — birthdays get shopping time, exams get study time.
     const val SMART = -1
 
+    // Sentinel window: visible only on the day it happens. Payday doesn't
+    // need a heads-up; it needs a "today".
+    const val DAY_OF = -2
+
+    // The one visibility rule, shared by the widget and the app's sections.
+    fun isVisible(window: Int, daysUntil: Long): Boolean = when {
+        window == DAY_OF -> daysUntil == 0L
+        window > 0 -> daysUntil <= window
+        else -> false
+    }
+
     // Settings share the windows file; event keys are numeric, so the
     // "setting:" prefix can never collide.
     private const val KEY_DEFAULT = "setting:default"

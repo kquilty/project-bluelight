@@ -102,8 +102,7 @@ class BluelightWidget : GlanceAppWidget() {
 // choice when one exists, otherwise the user's default for new events.
 private fun visibleEvents(context: Context): List<UpcomingEvent> =
     CalendarSource.upcomingEvents(context).filter { event ->
-        val window = EventWindows.effectiveDaysFor(context, event)
-        window > 0 && event.daysUntil <= window
+        EventWindows.isVisible(EventWindows.effectiveDaysFor(context, event), event.daysUntil)
     }
 
 @Composable

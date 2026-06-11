@@ -302,8 +302,8 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
     fun eff(e: UpcomingEvent): Int =
         windows[e.eventId] ?: EventWindows.resolveDefault(defaultDays, e.title)
 
-    val inView = loaded.filter { eff(it) > 0 && it.daysUntil <= eff(it) }
-    val waiting = loaded.filter { eff(it) > 0 && it.daysUntil > eff(it) }
+    val inView = loaded.filter { EventWindows.isVisible(eff(it), it.daysUntil) }
+    val waiting = loaded.filter { eff(it) != 0 && !EventWindows.isVisible(eff(it), it.daysUntil) }
     val resting = loaded.filter { eff(it) == 0 }
 
     val listState = rememberLazyListState()
@@ -643,13 +643,14 @@ private fun EventCard(
                     color = if (event.daysUntil == 0L) AccentGlow else Accent,
                 )
                 Section.Waiting -> Column(horizontalAlignment = Alignment.End) {
+                    val dayOf = window == EventWindows.DAY_OF
                     Text(
-                        text = "surfaces in ${event.daysUntil - window}d",
+                        text = "surfaces in ${if (dayOf) event.daysUntil else event.daysUntil - window}d",
                         style = MaterialTheme.typography.bodyMedium,
                         color = InkDim,
                     )
                     Text(
-                        text = "${window}d ahead",
+                        text = if (dayOf) "day of" else "${window}d ahead",
                         style = MaterialTheme.typography.bodySmall,
                         color = InkFaint,
                     )
@@ -674,6 +675,7 @@ private data class LeadTime(val days: Int, val label: String)
 
 private val LEAD_TIMES = listOf(
     LeadTime(0, "Hidden"),
+    LeadTime(EventWindows.DAY_OF, "Day of"),
     LeadTime(1, "1 day"),
     LeadTime(3, "3 days"),
     LeadTime(7, "1 week"),
@@ -748,8 +750,9 @@ private fun LeadTimeSheet(
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         if (!customOpen) {
                             customOpen = true
-                            // Coming from Hidden, give the stepper somewhere to start.
-                            if (currentDays == 0) onSelect(10)
+                            // Coming from Hidden or Day of, give the stepper
+                            // somewhere to start.
+                            if (currentDays <= 0) onSelect(10)
                         }
                     },
                     label = { Text("Custom…") },
@@ -794,6 +797,7 @@ private fun LeadTimeSheet(
 private val DEFAULT_CHOICES = listOf(
     LeadTime(EventWindows.DEFAULT_DAYS, "Hidden"),
     LeadTime(EventWindows.SMART, "Smart"),
+    LeadTime(EventWindows.DAY_OF, "Day of"),
     LeadTime(1, "1 day"),
     LeadTime(3, "3 days"),
     LeadTime(7, "1 week"),
@@ -804,6 +808,7 @@ private val DEFAULT_CHOICES = listOf(
 private fun defaultCaption(days: Int): String = when (days) {
     EventWindows.DEFAULT_DAYS -> "New events stay hidden until you promote them."
     EventWindows.SMART -> "By kind: birthdays surface 2 weeks out, trips 3 days, exams a week — everything else the day before."
+    EventWindows.DAY_OF -> "Every new event surfaces only on the day it happens."
     else -> "Every new event surfaces ${DEFAULT_CHOICES.first { it.days == days }.label} ahead. Your per-event choices always win."
 }
 
@@ -1005,7 +1010,7 @@ private fun BulkPromoteSheet(
             Text("START MATTERING", style = MaterialTheme.typography.labelSmall, color = InkFaint)
             Spacer(Modifier.height(12.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LEAD_TIMES.filter { it.days > 0 }.forEach { lead ->
+                LEAD_TIMES.filter { it.days != 0 }.forEach { lead ->
                     FilterChip(
                         selected = lead.days == days,
                         onClick = {
@@ -1081,8 +1086,11 @@ private fun BulkPromoteSheet(
             ) {
                 val label = LEAD_TIMES.first { it.days == days }.label
                 Text(
-                    text = if (chosen.isEmpty()) "Nothing ticked"
-                    else "Promote ${chosen.size} · $label ahead",
+                    text = when {
+                        chosen.isEmpty() -> "Nothing ticked"
+                        days == EventWindows.DAY_OF -> "Promote ${chosen.size} · day of"
+                        else -> "Promote ${chosen.size} · $label ahead"
+                    },
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
@@ -1145,6 +1153,8 @@ private fun sheetDateLine(event: UpcomingEvent): String = when (event.daysUntil)
 
 private fun previewLine(event: UpcomingEvent, days: Int): String = when {
     days == 0 -> "Stays off your widget."
+    days == EventWindows.DAY_OF && event.daysUntil > 0L ->
+        "Will surface ${event.date.format(shortDate)} — the day of."
     event.daysUntil == 0L -> "On your widget now — it's today."
     event.daysUntil <= days ->
         if (event.daysUntil == 1L) "On your widget now — 1 day to go."
