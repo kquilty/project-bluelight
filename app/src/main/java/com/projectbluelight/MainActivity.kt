@@ -265,7 +265,13 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
 
     LaunchedEffect(resumeTick) {
         val loaded = withContext(Dispatchers.IO) { CalendarSource.upcomingEvents(context) }
-        loaded.forEach { windows[it.eventId] = EventWindows.daysFor(context, it.eventId) }
+        // Only events the user has actually decided on enter the map — so a
+        // missing key means "never asked", and an explicit 0 means "chose Hidden".
+        loaded.forEach { e ->
+            if (EventWindows.isSet(context, e.eventId)) {
+                windows[e.eventId] = EventWindows.daysFor(context, e.eventId)
+            }
+        }
         events = loaded
     }
 
@@ -377,6 +383,9 @@ private fun EventsScreen(resumeTick: Int, saveWindows: (List<Long>, Int) -> Unit
     if (bulkOpen) {
         BulkPromoteSheet(
             events = resting,
+            hiddenByChoice = resting.mapNotNull { e ->
+                e.eventId.takeIf { windows[it] == 0 }
+            }.toSet(),
             onApply = { ids, days ->
                 ids.forEach { windows[it] = days }
                 saveWindows(ids, days)
@@ -561,13 +570,18 @@ private fun LeadTimeSheet(
 @Composable
 private fun BulkPromoteSheet(
     events: List<UpcomingEvent>,
+    hiddenByChoice: Set<Long>,
     onApply: (List<Long>, Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
     var days by remember { mutableIntStateOf(1) }
-    // Everything starts included; a tap on a row excludes the noise.
-    val excluded = remember { mutableStateMapOf<Long, Boolean>() }
+    // Everything starts included — except events the user explicitly hid,
+    // which start unticked so the sweep respects past choices. A tap flips
+    // either way; unticking never records a new "Hidden".
+    val excluded = remember {
+        mutableStateMapOf<Long, Boolean>().apply { hiddenByChoice.forEach { put(it, true) } }
+    }
     val chosen = events.filter { excluded[it.eventId] != true }
 
     ModalBottomSheet(
@@ -583,7 +597,7 @@ private fun BulkPromoteSheet(
             Text("Everything else, sorted", style = MaterialTheme.typography.headlineSmall, color = Ink)
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "One window for everything still hidden. Untick what doesn't deserve the headspace.",
+                text = "One window for everything you haven't sorted. Anything you chose to hide starts unticked.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = InkDim,
             )
@@ -630,7 +644,9 @@ private fun BulkPromoteSheet(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                text = cardDateLine(event),
+                                text = if (event.eventId in hiddenByChoice)
+                                    "${cardDateLine(event)}  ·  hidden by you"
+                                else cardDateLine(event),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = InkFaint,
                             )

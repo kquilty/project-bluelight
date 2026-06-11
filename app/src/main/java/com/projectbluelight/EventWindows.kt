@@ -18,6 +18,11 @@ object EventWindows {
     fun daysFor(context: Context, eventId: Long): Int =
         prefs(context).getInt(eventId.toString(), DEFAULT_DAYS)
 
+    // Distinguishes "chose Hidden" (stored 0) from "never asked" (no entry).
+    // Both stay off the widget; bulk-promote respects the explicit choice.
+    fun isSet(context: Context, eventId: Long): Boolean =
+        prefs(context).contains(eventId.toString())
+
     fun setDays(context: Context, eventId: Long, days: Int) {
         prefs(context).edit().putInt(eventId.toString(), days).apply()
     }
