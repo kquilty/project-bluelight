@@ -93,14 +93,16 @@ object EventWindows {
         Voice.Kind.GENERIC -> 1
     }
 
-    // ---------- "Handled" answers to the voice ----------
+    // ---------- Per-occurrence marks: handled, dismissed ----------
 
     private const val KEY_HANDLED = "setting:handled"
+    private const val KEY_DISMISSED = "setting:dismissed"
 
-    // "Gift sorted?" — answered. Stored as "eventId:epochDay" so the answer
-    // expires with the occurrence: next year's birthday asks again.
-    fun handledIds(context: Context, events: List<UpcomingEvent>): Set<Long> {
-        val entries = prefs(context).getStringSet(KEY_HANDLED, emptySet())!!
+    // Marks are stored as "eventId:epochDay" so they expire with the
+    // occurrence: next year's birthday asks again, next week's Riding
+    // shows up like nothing happened.
+    private fun occurrenceIds(context: Context, key: String, events: List<UpcomingEvent>): Set<Long> {
+        val entries = prefs(context).getStringSet(key, emptySet())!!
         val dateById = events.associate { it.eventId to it.date.toEpochDay() }
         return entries.mapNotNull { entry ->
             val id = entry.substringBefore(":").toLongOrNull()
@@ -109,15 +111,48 @@ object EventWindows {
         }.toSet()
     }
 
-    fun setHandled(context: Context, event: UpcomingEvent) {
+    private fun addOccurrence(context: Context, key: String, event: UpcomingEvent) {
         val today = CalendarSource.perceivedToday().toEpochDay()
-        // Prune answers whose day has passed while we're here.
-        val entries = prefs(context).getStringSet(KEY_HANDLED, emptySet())!!
+        // Prune marks whose day has passed while we're here.
+        val entries = prefs(context).getStringSet(key, emptySet())!!
             .filter { (it.substringAfter(":", "").toLongOrNull() ?: -1L) >= today }
             .toMutableSet()
         entries.add("${event.eventId}:${event.date.toEpochDay()}")
-        prefs(context).edit().putStringSet(KEY_HANDLED, entries).apply()
+        prefs(context).edit().putStringSet(key, entries).apply()
     }
+
+    private fun removeOccurrence(context: Context, key: String, event: UpcomingEvent) {
+        val entries = prefs(context).getStringSet(key, emptySet())!!
+            .filterNot { it == "${event.eventId}:${event.date.toEpochDay()}" }
+            .toSet()
+        prefs(context).edit().putStringSet(key, entries).apply()
+    }
+
+    // "Gift sorted?" — answered. Expires with the occurrence.
+    fun handledIds(context: Context, events: List<UpcomingEvent>): Set<Long> =
+        occurrenceIds(context, KEY_HANDLED, events)
+
+    fun setHandled(context: Context, event: UpcomingEvent) =
+        addOccurrence(context, KEY_HANDLED, event)
+
+    // "Seen it, done with it." Hides the current occurrence from the widget
+    // and the voice; the next occurrence arrives untouched.
+    fun dismissedIds(context: Context, events: List<UpcomingEvent>): Set<Long> =
+        occurrenceIds(context, KEY_DISMISSED, events)
+
+    fun setDismissed(context: Context, event: UpcomingEvent) =
+        addOccurrence(context, KEY_DISMISSED, event)
+
+    fun clearDismissed(context: Context, event: UpcomingEvent) =
+        removeOccurrence(context, KEY_DISMISSED, event)
+
+    // ---------- Derived weight ----------
+
+    // A generic event on a day-of or one-day window is a gentle nudge by
+    // construction — "keep it on my mind", not "prepare for this". Derived
+    // from the window the user already chose; never a second question.
+    fun isGentle(window: Int, title: String): Boolean =
+        Voice.kindOf(title) == Voice.Kind.GENERIC && (window == DAY_OF || window == 1)
 
     // ---------- One-time hints ----------
 

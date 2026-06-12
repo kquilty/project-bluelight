@@ -34,6 +34,18 @@ class EventWindowsTest {
         assertFalse(EventWindows.isVisible(14, 15))
     }
 
+    // Gentle weight is derived from the window the user already chose:
+    // a generic event on a short fuse is a reminder, not a project.
+    @Test
+    fun gentleIsDerivedNeverAsked() {
+        assertTrue(EventWindows.isGentle(EventWindows.DAY_OF, "Riding"))
+        assertTrue(EventWindows.isGentle(1, "Riding"))
+        assertFalse(EventWindows.isGentle(3, "Riding"))
+        assertFalse(EventWindows.isGentle(1, "Maya's birthday"))
+        assertFalse(EventWindows.isGentle(1, "Flight to Denver"))
+        assertFalse(EventWindows.isGentle(0, "Riding"))
+    }
+
     @Test
     fun plainDefaultPassesThroughUntouched() {
         assertEquals(0, EventWindows.resolveDefault(0, "Coffee with Sam"))

@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 
 package com.projectbluelight
 
@@ -22,8 +22,10 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -350,6 +352,14 @@ private fun EventsScreen(
     var hintSeen by remember { mutableStateOf(EventWindows.isScrubHintSeen(context)) }
     var handledTick by remember { mutableIntStateOf(0) }
     val handledSet = remember(loaded, handledTick) { EventWindows.handledIds(context, loaded) }
+    var dismissTick by remember { mutableIntStateOf(0) }
+    val dismissedSet = remember(loaded, dismissTick) { EventWindows.dismissedIds(context, loaded) }
+    val toggleDismiss: (UpcomingEvent) -> Unit = { e ->
+        if (e.eventId in dismissedSet) EventWindows.clearDismissed(context, e)
+        else EventWindows.setDismissed(context, e)
+        dismissTick++
+        refreshWidget()
+    }
     val scrubCommit: (UpcomingEvent, Int) -> Unit = { e, days ->
         windows[e.eventId] = days
         saveWindows(e.allIds, days)
@@ -425,7 +435,11 @@ private fun EventsScreen(
                     }
                 }
                 Spacer(Modifier.height(6.dp))
-                val voice = Voice.utterance(inView, passedLastWeek = passedWeek, handled = handledSet)
+                val voice = Voice.utterance(
+                    inView.filterNot { it.eventId in dismissedSet },
+                    passedLastWeek = passedWeek,
+                    handled = handledSet,
+                )
                 if (voice != null) {
                     Text(
                         text = voice.text,
@@ -530,7 +544,16 @@ private fun EventsScreen(
             }
         }
         items(inView, key = { it.eventId }) { event ->
-            EventCard(event, eff(event), Section.InView, Modifier.animateItem(), { scrubCommit(event, it) }) { selected = event }
+            EventCard(
+                event,
+                eff(event),
+                Section.InView,
+                Modifier.animateItem(),
+                onScrub = { scrubCommit(event, it) },
+                gentle = EventWindows.isGentle(eff(event), event.title),
+                dismissed = event.eventId in dismissedSet,
+                onLongPress = { toggleDismiss(event) },
+            ) { selected = event }
         }
 
         if (waiting.isNotEmpty()) {
@@ -625,6 +648,9 @@ private fun EventsScreen(
         LeadTimeSheet(
             event = event,
             currentDays = eff(event),
+            showDismiss = EventWindows.isVisible(eff(event), event.daysUntil),
+            dismissedNow = event.eventId in dismissedSet,
+            onToggleDismiss = { toggleDismiss(event) },
             onSelect = { days ->
                 windows[event.eventId] = days
                 saveWindows(event.allIds, days)
@@ -772,6 +798,9 @@ private fun EventCard(
     section: Section,
     modifier: Modifier = Modifier,
     onScrub: (Int) -> Unit,
+    gentle: Boolean = false,
+    dismissed: Boolean = false,
+    onLongPress: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
@@ -780,9 +809,11 @@ private fun EventCard(
     var startIndex by remember { mutableIntStateOf(0) }
     var dragAccum by remember { mutableStateOf(0f) }
     val scrubbing = scrubIndex != null
+    // Gentle nudges and dismissed events step back; they don't shout.
+    val muted = (gentle || dismissed) && !scrubbing
 
     // The day you promoted it for has arrived — let the card breathe a little.
-    val arriving = section == Section.InView && event.daysUntil == 0L && !scrubbing
+    val arriving = section == Section.InView && event.daysUntil == 0L && !scrubbing && !muted
     val pulse by rememberInfiniteTransition(label = "arrival").animateFloat(
         initialValue = 0.25f,
         targetValue = 0.65f,
@@ -794,7 +825,6 @@ private fun EventCard(
     )
 
     Surface(
-        onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 5.dp)
@@ -828,15 +858,16 @@ private fun EventCard(
                 }
             },
         shape = RoundedCornerShape(20.dp),
-        color = if (scrubbing) Surface2 else if (section == Section.InView) Surface2 else Surface1.copy(alpha = 0.65f),
+        color = if (scrubbing || (section == Section.InView && !muted)) Surface2
+        else Surface1.copy(alpha = 0.65f),
         border = when {
             scrubbing -> BorderStroke(1.dp, Accent.copy(alpha = 0.6f))
             arriving -> BorderStroke(1.dp, AccentGlow.copy(alpha = pulse))
-            section == Section.InView -> BorderStroke(1.dp, Accent.copy(alpha = 0.25f))
+            section == Section.InView && !muted -> BorderStroke(1.dp, Accent.copy(alpha = 0.25f))
             else -> null
         },
     ) {
-        Box {
+        Box(Modifier.combinedClickable(onClick = onClick, onLongClick = onLongPress)) {
             if (scrubbing) {
                 val frac by animateFloatAsState(
                     targetValue = (scrubIndex!! + 1f) / LEAD_TIMES.size,
@@ -858,14 +889,19 @@ private fun EventCard(
                 Text(
                     text = event.title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = if (section == Section.Resting && !scrubbing) InkDim else Ink,
+                    color = when {
+                        scrubbing -> Ink
+                        dismissed -> InkFaint
+                        gentle || section == Section.Resting -> InkDim
+                        else -> Ink
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = scrubIndex?.let { scrubPreview(event, LEAD_TIMES[it].days) }
-                        ?: cardDateLine(event),
+                        ?: if (dismissed) "done for today" else cardDateLine(event),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (scrubbing) AccentGlow else InkFaint,
                 )
@@ -882,7 +918,12 @@ private fun EventCard(
                 section == Section.InView -> Text(
                     text = countdown(event.daysUntil),
                     style = MaterialTheme.typography.headlineSmall,
-                    color = if (event.daysUntil == 0L) AccentGlow else Accent,
+                    color = when {
+                        dismissed -> InkFaint
+                        gentle -> InkDim
+                        event.daysUntil == 0L -> AccentGlow
+                        else -> Accent
+                    },
                 )
                 section == Section.Waiting -> Column(horizontalAlignment = Alignment.End) {
                     val dayOf = window == EventWindows.DAY_OF
@@ -932,6 +973,9 @@ private val LEAD_TIMES = listOf(
 private fun LeadTimeSheet(
     event: UpcomingEvent,
     currentDays: Int,
+    showDismiss: Boolean,
+    dismissedNow: Boolean,
+    onToggleDismiss: () -> Unit,
     onSelect: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -1030,6 +1074,25 @@ private fun LeadTimeSheet(
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (days > 0) AccentGlow else InkFaint,
                 )
+            }
+            // It's on the widget right now — offer to be done with it for
+            // today. The next occurrence is untouched.
+            if (showDismiss || dismissedNow) {
+                Spacer(Modifier.height(8.dp))
+                TextButton(
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onToggleDismiss()
+                    },
+                    contentPadding = PaddingValues(vertical = 0.dp),
+                ) {
+                    Text(
+                        text = if (dismissedNow) "Bring it back today"
+                        else "Done with this one — hide until it's over",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (dismissedNow) Accent else InkDim,
+                    )
+                }
             }
         }
     }

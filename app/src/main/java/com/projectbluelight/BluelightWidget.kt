@@ -66,6 +66,7 @@ class BluelightWidget : GlanceAppWidget() {
         val initial = withContext(Dispatchers.IO) { visibleEvents(context) }
         val initialScale = EventWindows.widgetFontScale(context)
         val initialPassed = withContext(Dispatchers.IO) { CalendarSource.passedWatchedLastWeek(context) }
+        val initialGentle = gentleIds(context, initial)
         provideContent {
             // updateAll() on a live session only RECOMPOSES — it does not re-run
             // provideGlance — so data captured above goes stale the moment the
@@ -76,10 +77,12 @@ class BluelightWidget : GlanceAppWidget() {
             var scale by remember { mutableStateOf(initialScale) }
             var passed by remember { mutableStateOf(initialPassed) }
             var handled by remember { mutableStateOf(EventWindows.handledIds(context, initial)) }
+            var gentle by remember { mutableStateOf(initialGentle) }
             LaunchedEffect(state) {
                 val fresh = withContext(Dispatchers.IO) { visibleEvents(context) }
                 events = fresh
                 handled = EventWindows.handledIds(context, fresh)
+                gentle = gentleIds(context, fresh)
                 scale = EventWindows.widgetFontScale(context)
                 passed = withContext(Dispatchers.IO) { CalendarSource.passedWatchedLastWeek(context) }
             }
@@ -88,6 +91,7 @@ class BluelightWidget : GlanceAppWidget() {
                 CalendarSource.hasPermission(context),
                 Voice.line(events, passedLastWeek = passed, handled = handled),
                 scale,
+                gentle,
             )
         }
     }
@@ -114,13 +118,30 @@ class BluelightWidget : GlanceAppWidget() {
 // This is the whole product: the widget is your calendar with each event
 // held back until it's close enough to matter. The window is the explicit
 // choice when one exists, otherwise the user's default for new events.
-private fun visibleEvents(context: Context): List<UpcomingEvent> =
-    CalendarSource.upcomingEvents(context).filter { event ->
-        EventWindows.isVisible(EventWindows.effectiveDaysFor(context, event), event.daysUntil)
+// Dismissed-for-today events sit this occurrence out.
+private fun visibleEvents(context: Context): List<UpcomingEvent> {
+    val all = CalendarSource.upcomingEvents(context)
+    val dismissed = EventWindows.dismissedIds(context, all)
+    return all.filter { event ->
+        event.eventId !in dismissed &&
+            EventWindows.isVisible(EventWindows.effectiveDaysFor(context, event), event.daysUntil)
     }
+}
+
+// Gentle nudges render a shade back, so presence doesn't always mean volume.
+private fun gentleIds(context: Context, events: List<UpcomingEvent>): Set<Long> =
+    events.filter { EventWindows.isGentle(EventWindows.effectiveDaysFor(context, it), it.title) }
+        .map { it.eventId }
+        .toSet()
 
 @Composable
-private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean, voice: String, scale: Float) {
+private fun WidgetContent(
+    events: List<UpcomingEvent>,
+    granted: Boolean,
+    voice: String,
+    scale: Float,
+    gentle: Set<Long> = emptySet(),
+) {
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
@@ -156,7 +177,11 @@ private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean, voice: 
             val tonight = Voice.isTonight()
             LazyColumn {
                 items(Voice.tonightOrder(events), itemId = { it.eventId }) { event ->
-                    EventRow(event, scale, dimmed = tonight && event.daysUntil == 0L)
+                    EventRow(
+                        event,
+                        scale,
+                        dimmed = (tonight && event.daysUntil == 0L) || event.eventId in gentle,
+                    )
                 }
             }
         }
