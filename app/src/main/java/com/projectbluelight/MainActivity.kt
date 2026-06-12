@@ -65,6 +65,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -322,9 +324,11 @@ private fun EventsScreen(
     var defaultDays by remember { mutableIntStateOf(EventWindows.DEFAULT_DAYS) }
     var defaultChosen by remember { mutableStateOf(true) }
     var passedWeek by remember { mutableIntStateOf(0) }
+    var voiceEnabled by remember { mutableStateOf(EventWindows.isVoiceEnabled(context)) }
 
     LaunchedEffect(resumeTick, settingsTick) {
         passedWeek = withContext(Dispatchers.IO) { CalendarSource.passedWatchedLastWeek(context) }
+        voiceEnabled = EventWindows.isVoiceEnabled(context)
         val loaded = withContext(Dispatchers.IO) { CalendarSource.upcomingEvents(context) }
         // Only events the user has actually decided on enter the map — so a
         // missing key means "never asked", and an explicit 0 means "chose Hidden".
@@ -435,11 +439,11 @@ private fun EventsScreen(
                     }
                 }
                 Spacer(Modifier.height(6.dp))
-                val voice = Voice.utterance(
+                val voice = if (voiceEnabled) Voice.utterance(
                     inView.filterNot { it.eventId in dismissedSet },
                     passedLastWeek = passedWeek,
                     handled = handledSet,
-                )
+                ) else null
                 if (voice != null) {
                     Text(
                         text = voice.text,
@@ -1141,6 +1145,7 @@ private fun SettingsSheet(
     var calendars by remember { mutableStateOf<List<CalendarInfo>>(emptyList()) }
     var muted by remember { mutableStateOf(setOf<Long>()) }
     var fontScale by remember { mutableStateOf(EventWindows.widgetFontScale(context)) }
+    var voiceOn by remember { mutableStateOf(EventWindows.isVoiceEnabled(context)) }
     LaunchedEffect(Unit) {
         calendars = withContext(Dispatchers.IO) { CalendarSource.calendars(context) }
         muted = EventWindows.mutedCalendars(context)
@@ -1187,6 +1192,34 @@ private fun SettingsSheet(
                     text = defaultCaption(days),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (days == EventWindows.DEFAULT_DAYS) InkFaint else AccentGlow,
+                )
+            }
+
+            Spacer(Modifier.height(28.dp))
+            Text("VOICE", style = MaterialTheme.typography.labelSmall, color = InkFaint)
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "One quiet line, only when it's useful.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = InkDim,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = voiceOn,
+                    onCheckedChange = { on ->
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        EventWindows.setVoiceEnabled(context, on)
+                        voiceOn = on
+                        onCalendarsChanged()
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedTrackColor = Accent,
+                        checkedThumbColor = OnAccent,
+                        uncheckedTrackColor = Surface2,
+                        uncheckedThumbColor = InkFaint,
+                        uncheckedBorderColor = InkFaint,
+                    ),
                 )
             }
 

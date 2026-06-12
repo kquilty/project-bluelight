@@ -167,6 +167,19 @@ object EventWindows {
         prefs(context).edit().putBoolean(KEY_SCRUB_HINT, true).apply()
     }
 
+    // ---------- Voice ----------
+
+    private const val KEY_VOICE = "setting:voice"
+
+    // The voice already self-censors (it speaks only when it has something
+    // the list can't say) — this is the master switch for list-only purists.
+    fun isVoiceEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_VOICE, true)
+
+    fun setVoiceEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_VOICE, enabled).apply()
+    }
+
     // ---------- Widget text size ----------
 
     private const val KEY_FONT = "setting:widget_font"

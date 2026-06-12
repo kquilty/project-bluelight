@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The tile's deep-space background with a soft blue aurora rising from the
+     top-left corner — the widget cousin of the app's header glow. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="24dp" />
+            <gradient
+                android:type="radial"
+                android:centerX="0.22"
+                android:centerY="0.0"
+                android:gradientRadius="340dp"
+                android:startColor="#FF1B3B61"
+                android:centerColor="#FF132A47"
+                android:endColor="#FF0E1A2B" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="24dp" />
+            <solid android:color="@android:color/transparent" />
+            <stroke
+                android:width="1dp"
+                android:color="#2E4DA3FF" />
+        </shape>
+    </item>
+</layer-list>

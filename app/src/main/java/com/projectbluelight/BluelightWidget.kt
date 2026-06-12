@@ -15,6 +15,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.ImageProvider
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
@@ -78,18 +79,20 @@ class BluelightWidget : GlanceAppWidget() {
             var passed by remember { mutableStateOf(initialPassed) }
             var handled by remember { mutableStateOf(EventWindows.handledIds(context, initial)) }
             var gentle by remember { mutableStateOf(initialGentle) }
+            var voiceOn by remember { mutableStateOf(EventWindows.isVoiceEnabled(context)) }
             LaunchedEffect(state) {
                 val fresh = withContext(Dispatchers.IO) { visibleEvents(context) }
                 events = fresh
                 handled = EventWindows.handledIds(context, fresh)
                 gentle = gentleIds(context, fresh)
                 scale = EventWindows.widgetFontScale(context)
+                voiceOn = EventWindows.isVoiceEnabled(context)
                 passed = withContext(Dispatchers.IO) { CalendarSource.passedWatchedLastWeek(context) }
             }
             WidgetContent(
                 events,
                 CalendarSource.hasPermission(context),
-                Voice.line(events, passedLastWeek = passed, handled = handled),
+                if (voiceOn) Voice.line(events, passedLastWeek = passed, handled = handled) else "",
                 scale,
                 gentle,
             )
@@ -145,7 +148,7 @@ private fun WidgetContent(
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
-            .background(BG)
+            .background(ImageProvider(R.drawable.widget_background))
             .cornerRadius(24.dp)
             .padding(12.dp)
             .clickable(actionStartActivity<MainActivity>()), // tap the tile to open the app
