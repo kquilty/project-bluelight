@@ -148,8 +148,11 @@ private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean, voice: 
             Spacer(GlanceModifier.height(8.dp))
             // Evenings belong to tomorrow: after 9pm tomorrow's events lead
             // and today's survivors step into the background.
+            // The list wraps its content (no fillMaxSize) so the empty space
+            // below the last row belongs to the tile — and a tap there opens
+            // the app instead of vanishing into the list view.
             val tonight = Voice.isTonight()
-            LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
+            LazyColumn {
                 items(Voice.tonightOrder(events), itemId = { it.eventId }) { event ->
                     EventRow(event, scale, dimmed = tonight && event.daysUntil == 0L)
                 }
