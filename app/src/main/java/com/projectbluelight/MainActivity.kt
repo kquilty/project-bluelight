@@ -403,8 +403,8 @@ private fun EventsScreen(
                             onDragCancel = { peekDays = 0; peekAccum = 0f },
                         ) { change, amount ->
                             change.consume()
-                            // Dragging left pulls the future toward you.
-                            peekAccum += -amount
+                            // Dragging right moves you forward through the days.
+                            peekAccum += amount
                             val next = (peekAccum / 28.dp.toPx()).roundToInt().coerceIn(0, 30)
                             if (next != peekDays) {
                                 headerHaptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -1059,8 +1059,8 @@ private data class FontChoice(val scale: Float, val label: String, val previewSp
 private val FONT_CHOICES = listOf(
     FontChoice(0.85f, "Small", 12),
     FontChoice(1f, "Default", 14),
-    FontChoice(1.15f, "Large", 16),
-    FontChoice(1.3f, "Huge", 18),
+    FontChoice(1.25f, "Large", 17),
+    FontChoice(1.5f, "Huge", 20),
 )
 
 @Composable

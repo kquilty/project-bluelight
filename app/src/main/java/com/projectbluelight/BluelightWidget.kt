@@ -170,17 +170,13 @@ private fun EventRow(event: UpcomingEvent, scale: Float, dimmed: Boolean = false
             .clickable(actionStartActivity<MainActivity>(actionParametersOf(OPEN_EVENT to event.eventId))),
         verticalAlignment = Alignment.Vertical.CenterVertically,
     ) {
-        // A timed event today shows its hour — "Today / at 4" — on two lines so
-        // the countdown column keeps its width.
-        val countdown = when {
-            event.daysUntil == 0L && event.time != null -> "Today\nat ${Voice.clock(event.time)}"
-            event.daysUntil == 0L -> "Today"
-            event.daysUntil == 1L -> "Tomorrow"
+        val countdown = when (event.daysUntil) {
+            0L -> "Today"
+            1L -> "Tomorrow"
             else -> "${event.daysUntil} days"
         }
         // Wide enough for the longest label ("Tomorrow") so nothing wraps
-        // mid-word — the column grows with the text size. The only two-line
-        // countdown is the deliberate "Today / at 4".
+        // mid-word — the column grows with the text size.
         Text(
             text = countdown,
             style = TextStyle(
@@ -188,14 +184,23 @@ private fun EventRow(event: UpcomingEvent, scale: Float, dimmed: Boolean = false
                 fontSize = (14 * scale).sp,
                 fontWeight = FontWeight.Bold,
             ),
-            maxLines = 2,
+            maxLines = 1,
             modifier = GlanceModifier.width((82 * scale).dp),
         )
         Text(
             text = event.title,
             style = TextStyle(color = solid(if (dimmed) DIM else FG), fontSize = (14 * scale).sp),
             maxLines = 1,
+            modifier = GlanceModifier.defaultWeight(),
         )
+        // A timed event today carries its hour after the title, a shade back.
+        if (event.daysUntil == 0L && event.time != null) {
+            Text(
+                text = " @ ${Voice.clock(event.time)}",
+                style = TextStyle(color = solid(DIM), fontSize = (13 * scale).sp),
+                maxLines = 1,
+            )
+        }
     }
 }
 
