@@ -27,7 +27,7 @@ object EventWindows {
         else -> false
     }
 
-    // Settings share the windows file; event keys are numeric, so the
+    // Settings share the Windows file; event keys are numeric, so the
     // "setting:" prefix can never collide.
     private const val KEY_DEFAULT = "setting:default"
     private const val KEY_MUTED = "setting:muted"

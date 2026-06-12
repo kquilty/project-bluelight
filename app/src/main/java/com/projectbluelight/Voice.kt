@@ -73,34 +73,46 @@ object Voice {
         val answerable: Boolean = false,
     )
 
-    // The one line for right now. `events` must be the in-view list, soonest
-    // first. `passedLastWeek` feeds the Sunday recap when nothing is urgent;
-    // `handled` holds events whose prep the user marked done.
+    // The one line for right now — or silence. The voice speaks only when it
+    // adds something the list below it can't say: kind-specific advice, a
+    // late-night nudge toward bed, an answerable question, the Sunday recap.
+    // "Today: Riding." above a row reading "Today  Riding" is just an echo,
+    // and echoes are noise. `events` must be the in-view list, soonest first.
     fun line(
         events: List<UpcomingEvent>,
         now: LocalDateTime = LocalDateTime.now(),
         passedLastWeek: Int = 0,
         handled: Set<Long> = emptySet(),
-    ): String = utterance(events, now, passedLastWeek, handled).text
+    ): String = utterance(events, now, passedLastWeek, handled)?.text ?: ""
 
     fun utterance(
         events: List<UpcomingEvent>,
         now: LocalDateTime = LocalDateTime.now(),
         passedLastWeek: Int = 0,
         handled: Set<Long> = emptySet(),
-    ): Utterance {
+    ): Utterance? {
         val today = events.firstOrNull { it.daysUntil == 0L }
         val tomorrow = events.firstOrNull { it.daysUntil == 1L }
         val lateNight = now.hour < CalendarSource.DAY_ROLLOVER_HOUR
 
         if (lateNight) {
+            // At 1am even a generic event earns a word — the advice is sleep.
             if (tomorrow != null) return Utterance(lateNightLine(tomorrow, hourLabel(now.hour)), tomorrow.eventId)
             if (today != null) return Utterance("Tonight, for real: ${today.title}.", today.eventId)
         }
-        if (today != null) return Utterance(todayLine(today), today.eventId)
-        if (tomorrow != null) return tomorrowUtterance(tomorrow, tomorrow.eventId in handled)
+        // Generic events fall through, not silent over — a generic today with
+        // a flight tomorrow still gets "pack tonight".
+        today?.takeIf { kindOf(it.title) != Kind.GENERIC }?.let {
+            return Utterance(todayLine(it), it.eventId)
+        }
+        tomorrow?.takeIf { kindOf(it.title) != Kind.GENERIC }?.let {
+            return tomorrowUtterance(it, it.eventId in handled)
+        }
         events.firstNotNullOfOrNull { approachUtterance(it, it.eventId in handled) }?.let { return it }
-        return Utterance(ambientLine(events, now, passedLastWeek))
+        if (now.dayOfWeek == java.time.DayOfWeek.SUNDAY && passedLastWeek > 0) {
+            return Utterance(recapLine(passedLastWeek))
+        }
+        return null
     }
 
     // "Four", for the recap — counts read warmer as words.
@@ -189,30 +201,9 @@ object Voice {
         }
     }
 
-    // Nothing needs saying — say something calm. Rotates daily so the widget
-    // feels alive without ever feeling random. On Sundays the calm earns a
-    // receipt: the week's watched events that came and went without fuss.
-    private fun ambientLine(events: List<UpcomingEvent>, now: LocalDateTime, passedLastWeek: Int): String {
-        if (now.dayOfWeek == java.time.DayOfWeek.SUNDAY && passedLastWeek > 0) {
-            return if (passedLastWeek == 1) "One thing came and went this week — handled, no fuss."
-            else "${countWord(passedLastWeek)} things came and went this week — all handled, no fires."
-        }
-        val day = now.dayOfYear
-        if (events.isEmpty()) {
-            val calm = listOf(
-                "All clear. The quiet is the feature.",
-                "Nothing in view. Exactly as designed.",
-                "All quiet. Go live your day.",
-            )
-            return calm[day % calm.size]
-        }
-        val next = events.first()
-        val whenBit = weekday(next)?.let { "on $it" } ?: "in ${next.daysUntil} days"
-        val steady = listOf(
-            "Nothing urgent. ${next.title} leads, $whenBit.",
-            "All steady. Next up: ${next.title}, $whenBit.",
-            "No fires. ${next.title} arrives $whenBit.",
-        )
-        return steady[day % steady.size]
-    }
+    // Sunday's calm earns a receipt: the week's watched events that came and
+    // went without fuss. Every other quiet moment stays actually quiet.
+    private fun recapLine(passedLastWeek: Int): String =
+        if (passedLastWeek == 1) "One thing came and went this week — handled, no fuss."
+        else "${countWord(passedLastWeek)} things came and went this week — all handled, no fires."
 }

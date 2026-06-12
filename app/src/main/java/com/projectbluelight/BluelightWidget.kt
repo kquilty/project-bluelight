@@ -136,16 +136,18 @@ private fun WidgetContent(events: List<UpcomingEvent>, granted: Boolean, voice: 
             Small("grant calendar access", scale)
             return@Column
         }
-        // The voice leads. The list is reference; this line is the point.
-        Text(
-            text = voice,
-            style = TextStyle(color = solid(DIM), fontSize = (12 * scale).sp, fontStyle = FontStyle.Italic),
-        )
+        // The voice speaks only when it has something the list can't say;
+        // otherwise the tile is just the list, which is the point.
+        if (voice.isNotBlank()) {
+            Text(
+                text = voice,
+                style = TextStyle(color = solid(DIM), fontSize = (12 * scale).sp, fontStyle = FontStyle.Italic),
+            )
+            Spacer(GlanceModifier.height(8.dp))
+        }
         if (events.isEmpty()) {
-            Spacer(GlanceModifier.height(6.dp))
             Small("tap to choose what shows here", scale)
         } else {
-            Spacer(GlanceModifier.height(8.dp))
             // Evenings belong to tomorrow: after 9pm tomorrow's events lead
             // and today's survivors step into the background.
             // The list wraps its content (no fillMaxSize) so the empty space

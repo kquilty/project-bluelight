@@ -52,16 +52,22 @@ class VoiceTest {
         assertEquals("12 days to Maya's birthday. Gift sorted?", line)
     }
 
+    // The voice only speaks when it adds something the list can't say.
+    // An echo of a visible row is noise; silence is the default.
     @Test
-    fun farOffGenericEventsGetCalmNotNagging() {
-        val line = Voice.line(listOf(event("Team offsite", 40)), noon)
-        assertTrue(line, "Team offsite" in line && "40" in line)
+    fun genericEventsAreLeftToTheList() {
+        assertEquals("", Voice.line(listOf(event("Riding", 0)), noon))
+        assertEquals("", Voice.line(listOf(event("Coffee with Sam", 1)), noon))
+        assertEquals("", Voice.line(listOf(event("Team offsite", 5)), noon))
+        assertEquals("", Voice.line(listOf(event("Team offsite", 40)), noon))
+        assertEquals("", Voice.line(emptyList(), noon))
     }
 
+    // Generic events fall through rather than silencing better advice behind them.
     @Test
-    fun emptyViewIsCalm() {
-        val line = Voice.line(emptyList(), noon)
-        assertTrue(line, line.isNotBlank())
+    fun genericTodayStillLetsTomorrowSpeak() {
+        val line = Voice.line(listOf(event("Riding", 0), event("Flight to Denver", 1)), noon)
+        assertEquals("Flight to Denver tomorrow. Pack tonight; morning-you packs badly.", line)
     }
 
     @Test
@@ -103,11 +109,6 @@ class VoiceTest {
         assertEquals("7 days to Chem 101 Final. Little and often beats the all-nighter.", line)
     }
 
-    @Test
-    fun calmLineNamesTheDayWhenClose() {
-        val line = Voice.line(listOf(event("Team offsite", 5)), noon)
-        assertTrue(line, "Team offsite" in line && "Saturday" in line)
-    }
 
     // The voice asks "Gift sorted?" — and remembers the answer.
     @Test
@@ -122,10 +123,10 @@ class VoiceTest {
     @Test
     fun questionsAreAnswerableUntilAnswered() {
         val e = event("Maya's birthday", 4)
-        val asked = Voice.utterance(listOf(e), noon)
+        val asked = Voice.utterance(listOf(e), noon)!!
         assertTrue(asked.answerable)
         assertEquals(e.eventId, asked.subjectId)
-        val answered = Voice.utterance(listOf(e), noon, handled = setOf(e.eventId))
+        val answered = Voice.utterance(listOf(e), noon, handled = setOf(e.eventId))!!
         assertTrue(!answered.answerable)
     }
 
