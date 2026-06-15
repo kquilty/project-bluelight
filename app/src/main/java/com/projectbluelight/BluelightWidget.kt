@@ -48,8 +48,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private val ACCENT = Color(0xFF4DA3FF)
-private val GLOW = Color(0xFF9CCBFF) // today's rows — arrival reads warmer
-private val BG = Color(0xFF0E1A2B)
 private val FG = Color(0xFFDCE6F2)
 private val DIM = Color(0xFF93A7C0)
 
@@ -67,7 +65,6 @@ class BluelightWidget : GlanceAppWidget() {
         val initial = withContext(Dispatchers.IO) { visibleEvents(context) }
         val initialScale = EventWindows.widgetFontScale(context)
         val initialPassed = withContext(Dispatchers.IO) { CalendarSource.passedWatchedLastWeek(context) }
-        val initialGentle = gentleIds(context, initial)
         provideContent {
             // updateAll() on a live session only RECOMPOSES — it does not re-run
             // provideGlance — so data captured above goes stale the moment the
@@ -78,13 +75,11 @@ class BluelightWidget : GlanceAppWidget() {
             var scale by remember { mutableStateOf(initialScale) }
             var passed by remember { mutableStateOf(initialPassed) }
             var handled by remember { mutableStateOf(EventWindows.handledIds(context, initial)) }
-            var gentle by remember { mutableStateOf(initialGentle) }
             var voiceOn by remember { mutableStateOf(EventWindows.isVoiceEnabled(context)) }
             LaunchedEffect(state) {
                 val fresh = withContext(Dispatchers.IO) { visibleEvents(context) }
                 events = fresh
                 handled = EventWindows.handledIds(context, fresh)
-                gentle = gentleIds(context, fresh)
                 scale = EventWindows.widgetFontScale(context)
                 voiceOn = EventWindows.isVoiceEnabled(context)
                 passed = withContext(Dispatchers.IO) { CalendarSource.passedWatchedLastWeek(context) }
@@ -94,7 +89,6 @@ class BluelightWidget : GlanceAppWidget() {
                 CalendarSource.hasPermission(context),
                 if (voiceOn) Voice.line(events, passedLastWeek = passed, handled = handled) else "",
                 scale,
-                gentle,
             )
         }
     }
@@ -131,19 +125,12 @@ private fun visibleEvents(context: Context): List<UpcomingEvent> {
     }
 }
 
-// Gentle nudges render a shade back, so presence doesn't always mean volume.
-private fun gentleIds(context: Context, events: List<UpcomingEvent>): Set<Long> =
-    events.filter { EventWindows.isGentle(EventWindows.effectiveDaysFor(context, it), it.title) }
-        .map { it.eventId }
-        .toSet()
-
 @Composable
 private fun WidgetContent(
     events: List<UpcomingEvent>,
     granted: Boolean,
     voice: String,
     scale: Float,
-    gentle: Set<Long> = emptySet(),
 ) {
     Column(
         modifier = GlanceModifier
@@ -172,19 +159,14 @@ private fun WidgetContent(
         if (events.isEmpty()) {
             Small("tap to choose what shows here", scale)
         } else {
-            // Evenings belong to tomorrow: after 9pm tomorrow's events lead
-            // and today's survivors step into the background.
+            // After 9pm tomorrow's events lead; the ordering shifts but every
+            // row reads the same — the list is uniform on purpose.
             // The list wraps its content (no fillMaxSize) so the empty space
             // below the last row belongs to the tile — and a tap there opens
             // the app instead of vanishing into the list view.
-            val tonight = Voice.isTonight()
             LazyColumn {
                 items(Voice.tonightOrder(events), itemId = { it.eventId }) { event ->
-                    EventRow(
-                        event,
-                        scale,
-                        dimmed = (tonight && event.daysUntil == 0L) || event.eventId in gentle,
-                    )
+                    EventRow(event, scale)
                 }
             }
         }
@@ -194,8 +176,10 @@ private fun WidgetContent(
 // Rows know who they are: tapping one opens the app with that event's sheet up.
 private val OPEN_EVENT = ActionParameters.Key<Long>(MainActivity.EXTRA_OPEN_EVENT)
 
+// Every row reads the same: accent countdown, full-strength title. No
+// window-derived shading — presence on the tile is the only signal.
 @Composable
-private fun EventRow(event: UpcomingEvent, scale: Float, dimmed: Boolean = false) {
+private fun EventRow(event: UpcomingEvent, scale: Float) {
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
@@ -213,7 +197,7 @@ private fun EventRow(event: UpcomingEvent, scale: Float, dimmed: Boolean = false
         Text(
             text = countdown,
             style = TextStyle(
-                color = solid(if (dimmed) DIM else if (event.daysUntil == 0L) GLOW else ACCENT),
+                color = solid(ACCENT),
                 fontSize = (14 * scale).sp,
                 fontWeight = FontWeight.Bold,
             ),
@@ -222,7 +206,7 @@ private fun EventRow(event: UpcomingEvent, scale: Float, dimmed: Boolean = false
         )
         Text(
             text = event.title,
-            style = TextStyle(color = solid(if (dimmed) DIM else FG), fontSize = (14 * scale).sp),
+            style = TextStyle(color = solid(FG), fontSize = (14 * scale).sp),
             maxLines = 1,
             modifier = GlanceModifier.defaultWeight(),
         )
